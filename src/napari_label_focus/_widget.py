@@ -14,6 +14,8 @@ from qtpy.QtWidgets import QWidget, QComboBox, QDialog, QGridLayout, QLabel
 
 import napari.layers
 
+from ._table import TableWidget
+
 if TYPE_CHECKING:
     import napari
 
@@ -23,22 +25,27 @@ class TableGeneratorWidget(QWidget):
         super().__init__()
         self.viewer = napari_viewer
 
-        # btn = QPushButton("Click me Table")
-        # btn.clicked.connect(self._on_click)
-        # self.setLayout(QHBoxLayout())
-        # self.layout().addWidget(btn)
+        import numpy as np
+        import tifffile
+        labs = tifffile.imread('/home/wittwer/code/napari-focus/napari-label-focus/src/napari_label_focus/test_labels.tif')
+        labs = np.swapaxes(labs, 0, 2)
+        self.viewer.add_image(np.zeros_like(labs), colormap='viridis')
+        self.viewer.add_labels(labs)
 
-        self.setLayout(QGridLayout())
-        # layout = QGridLayout(widget)
-        self.layout().addWidget(QLabel("Labels layers", self), 0, 0)
+        self.setLayout(
+            QGridLayout()
+            # QHBoxLayout()
+        )
+        # self.layout().addWidget(QLabel("Labels layers", self), 0, 0)
         self.cb = QComboBox()
-        self.layout().addWidget(self.cb, 0, 1)
+        self.layout().addWidget(self.cb, 0, 0)
+        self.table = TableWidget(viewer=self.viewer)
+        self.layout().addWidget(self.table, 1, 0)
+
         self.viewer.events.layers_change.connect(self._on_layer_change)
         self.cb.currentTextChanged.connect(self._on_cb_change)
         self._on_layer_change(None)
 
-    # def _on_click(self):
-    #     print("napari has", len(self.viewer.layers), "layers")
 
     def _on_layer_change(self, e):
         self.cb.clear()
@@ -46,13 +53,19 @@ class TableGeneratorWidget(QWidget):
             if isinstance(x, napari.layers.Labels):
                 self.cb.addItem(x.name, x.data)
 
-        if self.cb.count() < 1:  # Nothing in the combobox
-            print('Nothing in the combobox')
-        else:
-            print('Objects in the combobox: ', self.cb.count())
+    def _on_cb_change(self, selection: str):
+        selected_layer = None
+        for l in self.viewer.layers:
+            if l.name == selection:
+                selected_layer = l
+                break
+        
+        if selected_layer is None:
+            return
+        
+        self.table.update_content(selected_layer)
 
-    def _on_cb_change(self, selection):
-        print(selection)
+        
 
 
 # class ExampleQWidget(QWidget):
