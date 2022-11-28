@@ -7,7 +7,7 @@
 [![codecov](https://codecov.io/gh/MalloryWittwer/napari-label-focus/branch/main/graph/badge.svg)](https://codecov.io/gh/MalloryWittwer/napari-label-focus)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-label-focus)](https://napari-hub.org/plugins/napari-label-focus)
 
-Easily focus the view on [C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[D[D[D
+Easily focus the view on selected elements from a Labels layer.
 
 ----------------------------------
 
