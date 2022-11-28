@@ -1,7 +1,6 @@
 import napari
 from pandas import DataFrame
-from qtpy.QtCore import QTimer
-from qtpy.QtWidgets import QTableWidget, QHBoxLayout, QTableWidgetItem, QWidget, QGridLayout, QPushButton, QFileDialog
+from qtpy.QtWidgets import QTableWidget, QHBoxLayout, QTableWidgetItem, QWidget, QGridLayout, QPushButton
 import pandas as pd
 from typing import Union
 import numpy as np
@@ -43,8 +42,6 @@ class TableWidget(QWidget):
         if "label" in self._table.keys():
             row = self._view.currentRow()
             label = self._table["label"][row]
-            print("Table clicked, set label", label)
-
             self._layer.selected_label = label
 
             # Focus the viewr on selected label
@@ -66,16 +63,6 @@ class TableWidget(QWidget):
             current_step[0] = cz
             current_step = tuple(current_step)
             self._viewer.dims.current_step = current_step
-
-            # self.focus_view(bbox)
-
-            # frame_column = _determine_frame_column(self._table)
-            # if frame_column is not None and self._viewer is not None:
-            #     frame = self._table[frame_column][row]
-            #     current_step = list(self._viewer.dims.current_step)
-            #     if len(current_step) >= 4:
-            #         current_step[-4] = frame
-            #         self._viewer.dims.current_step = current_step
 
     def _refresh_clicked(self): self.update_content(self._layer)
 
@@ -113,7 +100,7 @@ class TableWidget(QWidget):
         Read the content of the table from the associated labels_layer and overwrites the current content.
         """
         self._layer = layer
-        regionprops_table(self._layer, self._viewer)
+        self._regionprops_table()
         self.set_content(self._layer.properties)
 
     def append_content(self, table: Union[dict, DataFrame], how: str = 'outer'):
@@ -146,35 +133,15 @@ class TableWidget(QWidget):
         self.set_content(table.to_dict('list'))
 
 
-# def _determine_frame_column(table):
-#     candidates = ["Frame", "frame"]
-#     for c in candidates:
-#         if c in table.keys():
-#             return c
-#     return None
+    def _regionprops_table(self):
+        """
+        Adds a table widget to a given napari viewer with quantitative analysis results derived from an image-label pair.
+        """
+        labels = self._layer.data
 
+        table = skimage.measure.regionprops_table(
+            np.asarray(labels).astype(int), 
+            properties=['label', 'area', 'centroid', 'bbox'], 
+        )
 
-def regionprops_table(labels_layer: napari.layers.Labels, viewer : napari.Viewer = None) -> TableWidget:
-    """
-    Adds a table widget to a given napari viewer with quantitative analysis results derived from an image-label pair.
-    """
-    if viewer is None:
-        return
-    
-    if labels_layer is None:
-        return
-
-    labels = labels_layer.data
-
-    current_dim_value = viewer.dims.current_step[0]
-
-    if len(labels.shape) == 4:
-        labels = labels[current_dim_value]
-
-    table = skimage.measure.regionprops_table(
-        np.asarray(labels).astype(int), 
-        properties=['label', 'area', 'centroid', 'bbox'], 
-    )
-
-    labels_layer.properties = table
-    labels_layer.refresh()
+        self._layer.properties = table
