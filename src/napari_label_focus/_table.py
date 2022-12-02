@@ -58,6 +58,11 @@ class TableWidget(QWidget):
             self._viewer.camera.center = (0.0, cx, cy)
             self._viewer.camera.angles = (0.0, 0.0, 90.0)
 
+            # print(self._viewer.camera.zoom)
+            label_size = max(x1 - x0, y1 - y0)
+            # print(f'{label_size=}')
+            self._viewer.camera.zoom = max(20 - 0.2 * label_size, 5)
+
             current_step = self._viewer.dims.current_step
             current_step = np.array(current_step)
             current_step[0] = cz

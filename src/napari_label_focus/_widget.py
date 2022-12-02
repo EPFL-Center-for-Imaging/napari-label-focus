@@ -24,12 +24,13 @@ class TableGeneratorWidget(QWidget):
         super().__init__()
         self.viewer = napari_viewer
 
-        import numpy as np
-        import tifffile
-        labs = tifffile.imread('/home/wittwer/code/napari-focus/napari-label-focus/src/napari_label_focus/test_labels.tif')
-        labs = np.swapaxes(labs, 0, 2)
-        self.viewer.add_image(np.zeros_like(labs), colormap='viridis')
-        self.viewer.add_labels(labs)
+        # import numpy as np
+        # import tifffile
+        # labs = tifffile.imread('/home/wittwer/code/napari-focus/napari-label-focus/src/napari_label_focus/test_labels.tif')
+        # labs = np.swapaxes(labs, 0, 2)
+        # labs = tifffile.imread('/home/wittwer/code/napari-focus/napari-label-focus/src/napari_label_focus/test_labels_size.tif')
+        # self.viewer.add_image(np.zeros_like(labs), colormap='viridis')
+        # self.viewer.add_labels(labs)
 
         self.setLayout(QGridLayout())
         self.cb = QComboBox()
