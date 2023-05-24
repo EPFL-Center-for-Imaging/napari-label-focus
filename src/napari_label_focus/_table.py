@@ -1,10 +1,19 @@
-import napari
-from pandas import DataFrame
-from qtpy.QtWidgets import QTableWidget, QHBoxLayout, QTableWidgetItem, QWidget, QGridLayout, QPushButton
-import pandas as pd
 from typing import Union
+
+import napari
 import numpy as np
+import pandas as pd
 import skimage.measure
+from pandas import DataFrame
+from qtpy.QtWidgets import (
+    QFileDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QWidget,
+)
 
 
 class TableWidget(QWidget):
@@ -12,7 +21,8 @@ class TableWidget(QWidget):
     The table widget represents a table inside napari.
     Tables are just views on `properties` of `layers`.
     """
-    def __init__(self, layer: napari.layers.Layer = None, viewer:napari.Viewer = None):
+
+    def __init__(self, layer: napari.layers.Layer = None, viewer: napari.Viewer = None):
         super().__init__()
 
         self._layer = layer
@@ -20,7 +30,7 @@ class TableWidget(QWidget):
 
         self._view = QTableWidget()
         self._view.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
+
         self.set_content({})
 
         self._view.clicked.connect(self._clicked_table)
@@ -28,11 +38,15 @@ class TableWidget(QWidget):
         refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self._refresh_clicked)
 
+        save_button = QPushButton("Save as csv...")
+        save_button.clicked.connect(self._save_clicked)
+
         self.setLayout(QGridLayout())
 
         action_widget = QWidget()
         action_widget.setLayout(QHBoxLayout())
         action_widget.layout().addWidget(refresh_btn)
+        action_widget.layout().addWidget(save_button)
         self.layout().addWidget(action_widget)
         self.layout().addWidget(self._view)
         action_widget.layout().setSpacing(3)
@@ -45,12 +59,12 @@ class TableWidget(QWidget):
             self._layer.selected_label = label
 
             # Focus the viewr on selected label
-            z0 = int(self._table['bbox-0'][row])
-            z1 = int(self._table['bbox-3'][row])
-            x0 = int(self._table['bbox-1'][row])
-            x1 = int(self._table['bbox-4'][row])
-            y0 = int(self._table['bbox-2'][row])
-            y1 = int(self._table['bbox-5'][row])
+            z0 = int(self._table["bbox-0"][row])
+            z1 = int(self._table["bbox-3"][row])
+            x0 = int(self._table["bbox-1"][row])
+            x1 = int(self._table["bbox-4"][row])
+            y0 = int(self._table["bbox-2"][row])
+            y1 = int(self._table["bbox-5"][row])
 
             cx = (x1 + x0) / 2
             cy = (y1 + y0) / 2
@@ -69,9 +83,17 @@ class TableWidget(QWidget):
             current_step = tuple(current_step)
             self._viewer.dims.current_step = current_step
 
-    def _refresh_clicked(self): self.update_content(self._layer)
+    def _save_clicked(self, event=None, filename=None):
+        if filename is None:
+            filename, _ = QFileDialog.getSaveFileName(
+                self, "Save as csv...", ".", "*.csv"
+            )
+        DataFrame(self._table).to_csv(filename)
 
-    def set_content(self, table : dict):
+    def _refresh_clicked(self):
+        self.update_content(self._layer)
+
+    def set_content(self, table: dict):
         """
         Overwrites the content of the table with the content of a given dictionary.
         """
@@ -80,18 +102,25 @@ class TableWidget(QWidget):
 
         self._table = table
 
+        # Convert to dataframe to sort it and rename columns
+        if len(table):
+            df = DataFrame(self._table)
+            df.rename(columns={"area": "volume"}, inplace=True)
+            df.sort_values(by="volume", ascending=False, inplace=True)
+            self._table = df.to_dict("list")
+
         self._view.clear()
         try:
-            self._view.setRowCount(len(next(iter(table.values()))))
+            self._view.setRowCount(len(next(iter(self._table.values()))))
             self._view.setColumnCount(2)
         except StopIteration:
             pass
-        
-        for i, column in enumerate(table.keys()):
-            if column not in ['label', 'area']:
+
+        for i, column in enumerate(self._table.keys()):
+            if column not in ["label", "volume"]:
                 continue
             self._view.setHorizontalHeaderItem(i, QTableWidgetItem(column))
-            for j, value in enumerate(table.get(column)):
+            for j, value in enumerate(self._table.get(column)):
                 self._view.setItem(j, i, QTableWidgetItem(str(value)))
 
     def get_content(self) -> dict:
@@ -108,7 +137,7 @@ class TableWidget(QWidget):
         self._regionprops_table()
         self.set_content(self._layer.properties)
 
-    def append_content(self, table: Union[dict, DataFrame], how: str = 'outer'):
+    def append_content(self, table: Union[dict, DataFrame], how: str = "outer"):
         """
         Append data to table.
 
@@ -135,8 +164,7 @@ class TableWidget(QWidget):
         else:
             table = pd.merge(table, _table, how=how, copy=False)
 
-        self.set_content(table.to_dict('list'))
-
+        self.set_content(table.to_dict("list"))
 
     def _regionprops_table(self):
         """
@@ -145,8 +173,8 @@ class TableWidget(QWidget):
         labels = self._layer.data
 
         table = skimage.measure.regionprops_table(
-            np.asarray(labels).astype(int), 
-            properties=['label', 'area', 'centroid', 'bbox'], 
+            np.asarray(labels).astype(int),
+            properties=["label", "area", "centroid", "bbox"],
         )
 
         self._layer.properties = table

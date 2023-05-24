@@ -1,15 +1,8 @@
-"""
-This module is an example of a barebones QWidget plugin for napari
-
-It implements the Widget specification.
-see: https://napari.org/stable/plugins/guides.html?#widgets
-
-Replace code below according to your needs.
-"""
 from typing import TYPE_CHECKING
 
-from qtpy.QtWidgets import QHBoxLayout, QPushButton, QWidget
-from qtpy.QtWidgets import QWidget, QComboBox, QDialog, QGridLayout, QLabel
+import napari.layers
+from napari_tools_menu import register_dock_widget
+from qtpy.QtWidgets import QComboBox, QGridLayout, QWidget
 
 import napari.layers
 
@@ -19,18 +12,11 @@ if TYPE_CHECKING:
     import napari
 
 
+@register_dock_widget(menu="Data table > Data table")
 class TableGeneratorWidget(QWidget):
     def __init__(self, napari_viewer):
         super().__init__()
         self.viewer = napari_viewer
-
-        # import numpy as np
-        # import tifffile
-        # labs = tifffile.imread('/home/wittwer/code/napari-focus/napari-label-focus/src/napari_label_focus/test_labels.tif')
-        # labs = np.swapaxes(labs, 0, 2)
-        # labs = tifffile.imread('/home/wittwer/code/napari-focus/napari-label-focus/src/napari_label_focus/test_labels_size.tif')
-        # self.viewer.add_image(np.zeros_like(labs), colormap='viridis')
-        # self.viewer.add_labels(labs)
 
         self.setLayout(QGridLayout())
         self.cb = QComboBox()
@@ -38,10 +24,19 @@ class TableGeneratorWidget(QWidget):
         self.table = TableWidget(viewer=self.viewer)
         self.layout().addWidget(self.table, 1, 0)
 
-        self.viewer.events.layers_change.connect(self._on_layer_change)
         self.cb.currentTextChanged.connect(self._on_cb_change)
+
+        self.viewer.layers.events.inserted.connect(self._add_rename_event)
+        self.viewer.layers.events.inserted.connect(self._on_layer_change)
+        self.viewer.layers.events.removed.connect(self._on_layer_change)
         self._on_layer_change(None)
 
+    def _add_rename_event(self, e):
+        source_layer = e.value
+        source_layer.events.name.connect(self._proxy_on_layer_change)
+
+    def _proxy_on_layer_change(self, e):
+        self._on_layer_change(None)
 
     def _on_layer_change(self, e):
         self.cb.clear()
@@ -55,9 +50,9 @@ class TableGeneratorWidget(QWidget):
             if l.name == selection:
                 selected_layer = l
                 break
-        
+
         if selected_layer is None:
             return
-        
+
         self.table.update_content(selected_layer)
 
