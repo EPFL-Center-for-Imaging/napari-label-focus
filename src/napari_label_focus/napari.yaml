@@ -2,9 +2,9 @@ name: napari-label-focus
 display_name: Napari Label Focus
 contributions:
   commands:
-    - id: nnunetv2-inference.table
+    - id: napari-label-focus.table
       title: Data table
-      python_name: nnunetv2_inference.napari_label_focus:TableGeneratorWidget
+      python_name: napari-label-focus.napari_label_focus:TableGeneratorWidget
   widgets:
-    - command: nnunetv2-inference.table
+    - command: napari-label-focus.table
       display_name: Data table
