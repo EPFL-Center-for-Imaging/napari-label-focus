@@ -2,25 +2,9 @@ name: napari-label-focus
 display_name: Napari Label Focus
 contributions:
   commands:
-    # - id: napari-label-focus.make_qwidget
-    #   python_name: napari_label_focus._widget:ExampleQWidget
-    #   title: Make example QWidget
-    # - id: napari-label-focus.make_magic_widget
-    #   python_name: napari_label_focus._widget:example_magic_widget
-    #   title: Make example magic widget
-    # - id: napari-label-focus.make_func_widget
-    #   python_name: napari_label_focus._widget:example_function_widget
-    #   title: Make example function widget
-    - id: napari-label-focus.make_table_generator_widget
-      python_name: napari_label_focus._widget:TableGeneratorWidget
-      title: Make table generator widget
+    - id: nnunetv2-inference.table
+      title: Data table
+      python_name: nnunetv2_inference.napari_label_focus:TableGeneratorWidget
   widgets:
-    # - command: napari-label-focus.make_qwidget
-    #   display_name: Example QWidget
-    # - command: napari-label-focus.make_magic_widget
-    #   display_name: Example Magic Widget
-    # - command: napari-label-focus.make_func_widget
-    #   autogenerate: true
-    #   display_name: Example Function Widget
-    - command: napari-label-focus.make_table_generator_widget
-      display_name: Table generator widget
+    - command: nnunetv2-inference.table
+      display_name: Data table
