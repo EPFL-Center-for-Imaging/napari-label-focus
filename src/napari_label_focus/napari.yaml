@@ -4,7 +4,7 @@ contributions:
   commands:
     - id: napari-label-focus.table
       title: Data table
-      python_name: napari-label-focus.napari_label_focus:TableGeneratorWidget
+      python_name: napari_label_focus:TableGeneratorWidget
   widgets:
     - command: napari-label-focus.table
       display_name: Data table
