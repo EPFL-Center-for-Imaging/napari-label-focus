@@ -1,10 +1,7 @@
-from typing import Union
-
 import napari
 import numpy as np
 import pandas as pd
 import skimage.measure
-from pandas import DataFrame
 from qtpy.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -15,37 +12,25 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-
-class TableWidget(QWidget):
-    """
-    The table widget represents a table inside napari.
-    Tables are just views on `properties` of `layers`.
-    """
-
+class Table(QWidget):
     def __init__(self, layer: napari.layers.Layer = None, viewer: napari.Viewer = None):
         super().__init__()
-
         self._layer = layer
         self._viewer = viewer
-
         self._view = QTableWidget()
         self._view.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-
-        self.set_content({})
-
+        self._view.setColumnCount(2)
+        self._view.setRowCount(1)
+        self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
+        self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
         self._view.clicked.connect(self._clicked_table)
 
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.clicked.connect(self._refresh_clicked)
-
-        save_button = QPushButton("Save as csv...")
-        save_button.clicked.connect(self._save_clicked)
+        save_button = QPushButton("Save as CSV")
+        save_button.clicked.connect(lambda _: self._save_csv())
 
         self.setLayout(QGridLayout())
-
         action_widget = QWidget()
         action_widget.setLayout(QHBoxLayout())
-        action_widget.layout().addWidget(refresh_btn)
         action_widget.layout().addWidget(save_button)
         self.layout().addWidget(action_widget)
         self.layout().addWidget(self._view)
@@ -53,128 +38,70 @@ class TableWidget(QWidget):
         action_widget.layout().setContentsMargins(0, 0, 0, 0)
 
     def _clicked_table(self):
-        if "label" in self._table.keys():
-            row = self._view.currentRow()
-            label = self._table["label"][row]
-            self._layer.selected_label = label
+        row = self._view.currentRow()
+        if self._layer is None:
+            return
 
-            # Focus the viewr on selected label
-            z0 = int(self._table["bbox-0"][row])
-            z1 = int(self._table["bbox-3"][row])
-            x0 = int(self._table["bbox-1"][row])
-            x1 = int(self._table["bbox-4"][row])
-            y0 = int(self._table["bbox-2"][row])
-            y1 = int(self._table["bbox-5"][row])
+        self._layer.selected_label = self._table["label"][row]
 
-            cx = (x1 + x0) / 2
-            cy = (y1 + y0) / 2
-            cz = int((z1 + z0) / 2)
-            self._viewer.camera.center = (0.0, cx, cy)
-            self._viewer.camera.angles = (0.0, 0.0, 90.0)
+        z0 = int(self._table["bbox-0"][row])
+        z1 = int(self._table["bbox-3"][row])
+        x0 = int(self._table["bbox-1"][row])
+        x1 = int(self._table["bbox-4"][row])
+        y0 = int(self._table["bbox-2"][row])
+        y1 = int(self._table["bbox-5"][row])
 
-            # print(self._viewer.camera.zoom)
-            label_size = max(x1 - x0, y1 - y0)
-            # print(f'{label_size=}')
-            self._viewer.camera.zoom = max(20 - 0.2 * label_size, 5)
+        cx = (x1 + x0) / 2
+        cy = (y1 + y0) / 2
+        cz = int((z1 + z0) / 2)
+        self._viewer.camera.center = (0.0, cx, cy)
+        self._viewer.camera.angles = (0.0, 0.0, 90.0)
 
-            current_step = self._viewer.dims.current_step
-            current_step = np.array(current_step)
-            current_step[0] = cz
-            current_step = tuple(current_step)
-            self._viewer.dims.current_step = current_step
+        label_size = max(x1 - x0, y1 - y0)
+        self._viewer.camera.zoom = max(20 - 0.2 * label_size, 5)
 
-    def _save_clicked(self, event=None, filename=None):
-        if filename is None:
-            filename, _ = QFileDialog.getSaveFileName(
-                self, "Save as csv...", ".", "*.csv"
-            )
-        DataFrame(self._table).to_csv(filename)
+        current_step = self._viewer.dims.current_step
+        current_step = np.array(current_step)
+        current_step[0] = cz
+        current_step = tuple(current_step)
+        self._viewer.dims.current_step = current_step
 
-    def _refresh_clicked(self):
-        self.update_content(self._layer)
-
-    def set_content(self, table: dict):
-        """
-        Overwrites the content of the table with the content of a given dictionary.
-        """
-        if table is None:
-            table = {}
-
-        self._table = table
-
-        # Convert to dataframe to sort it and rename columns
-        if len(table):
-            df = DataFrame(self._table)
-            df.rename(columns={"area": "volume"}, inplace=True)
-            df.sort_values(by="volume", ascending=False, inplace=True)
-            self._table = df.to_dict("list")
-
-        self._view.clear()
-        try:
-            self._view.setRowCount(len(next(iter(self._table.values()))))
-            self._view.setColumnCount(2)
-        except StopIteration:
-            pass
-
-        for i, column in enumerate(self._table.keys()):
-            if column not in ["label", "volume"]:
-                continue
-            self._view.setHorizontalHeaderItem(i, QTableWidgetItem(column))
-            for j, value in enumerate(self._table.get(column)):
-                self._view.setItem(j, i, QTableWidgetItem(str(value)))
-
-    def get_content(self) -> dict:
-        """
-        Returns the current content of the table
-        """
-        return self._table
-
-    def update_content(self, layer: napari.layers.Labels):
-        """
-        Read the content of the table from the associated labels_layer and overwrites the current content.
-        """
-        self._layer = layer
-        self._regionprops_table()
-        self.set_content(self._layer.properties)
-
-    def append_content(self, table: Union[dict, DataFrame], how: str = "outer"):
-        """
-        Append data to table.
-
-        Parameters
-        ----------
-        table : Union[dict, DataFrame]
-            New data to be appended.
-        how : str, OPTIONAL
-            Method how to join the data. See also https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.merge.html
-        Returns
-        -------
-        None.
-        """
-        # Check input type
-        if not isinstance(table, DataFrame):
-            table = DataFrame(table)
-
-        _table = DataFrame(self._table)
-
-        # Check whether there are common columns and switch merge type accordingly
-        common_columns = np.intersect1d(table.columns, _table.columns)
-        if len(common_columns) == 0:
-            table = pd.concat([table, _table])
-        else:
-            table = pd.merge(table, _table, how=how, copy=False)
-
-        self.set_content(table.to_dict("list"))
-
-    def _regionprops_table(self):
-        """
-        Adds a table widget to a given napari viewer with quantitative analysis results derived from an image-label pair.
-        """
-        labels = self._layer.data
-
-        table = skimage.measure.regionprops_table(
-            np.asarray(labels).astype(int),
-            properties=["label", "area", "centroid", "bbox"],
+    def _save_csv(self):
+        if self._layer is None:
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save as CSV", ".", "*.csv"
         )
 
-        self._layer.properties = table
+        pd.DataFrame(self._table).to_csv(filename)
+
+    def update_content(self, layer: napari.layers.Labels):
+        self._layer = layer
+        if self._layer is None:
+            self._view.clear()
+            self._view.setRowCount(1)
+            self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
+            self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
+            return
+
+        labels = self._layer.data
+        if labels.sum() == 0:
+            return
+        
+        properties = skimage.measure.regionprops_table(labels, properties=["label", "area", "bbox"])
+        df = pd.DataFrame.from_dict(properties)
+        df.rename(columns={"area": "volume"}, inplace=True)
+        df.sort_values(by="volume", ascending=False, inplace=True)
+        self.set_content(df)
+
+    def set_content(self, df: pd.DataFrame):
+        self._table = df
+        self._view.clear()
+        self._view.setRowCount(len(self._table))
+        self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
+        self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
+
+        for i, (lab, vol) in self._table[['label', 'volume']].iterrows():
+            self._view.setItem(0, i, QTableWidgetItem(str(lab)))
+            self._view.setItem(1, i, QTableWidgetItem(str(vol)))

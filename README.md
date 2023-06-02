@@ -1,13 +1,8 @@
 # napari-label-focus
 
-[![License BSD-3](https://img.shields.io/pypi/l/napari-label-focus.svg?color=green)](https://github.com/MalloryWittwer/napari-label-focus/raw/main/LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/napari-label-focus.svg?color=green)](https://pypi.org/project/napari-label-focus)
-[![Python Version](https://img.shields.io/pypi/pyversions/napari-label-focus.svg?color=green)](https://python.org)
-[![tests](https://github.com/MalloryWittwer/napari-label-focus/workflows/tests/badge.svg)](https://github.com/MalloryWittwer/napari-label-focus/actions)
-[![codecov](https://codecov.io/gh/MalloryWittwer/napari-label-focus/branch/main/graph/badge.svg)](https://codecov.io/gh/MalloryWittwer/napari-label-focus)
-[![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-label-focus)](https://napari-hub.org/plugins/napari-label-focus)
-
 Easily focus the view on selected elements from a Labels layer.
+
+
 
 ----------------------------------
 
@@ -42,7 +37,7 @@ Distributed under the terms of the [BSD-3] license,
 
 ## Issues
 
-If you encounter any problems, please [file an issue] along with a detailed description.
+If you encounter any problems, please file an issue along with a detailed description.
 
 [napari]: https://github.com/napari/napari
 [Cookiecutter]: https://github.com/audreyr/cookiecutter

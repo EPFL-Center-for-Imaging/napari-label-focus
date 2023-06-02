@@ -1,6 +1,6 @@
 __version__ = "0.0.1"
-from ._widget import TableGeneratorWidget
+from ._widget import TableWidget
 
 __all__ = (
-    "TableGeneratorWidget",
+    "TableWidget",
 )
