@@ -89,6 +89,9 @@ class Table(QWidget):
         if labels.sum() == 0:
             return
         
+        if len(labels.shape) == 2:
+            labels = labels[None]  # Add an extra dimension
+        
         properties = skimage.measure.regionprops_table(labels, properties=["label", "area", "bbox"])
         df = pd.DataFrame.from_dict(properties)
         df.rename(columns={"area": "volume"}, inplace=True)
@@ -103,5 +106,5 @@ class Table(QWidget):
         self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
 
         for i, (lab, vol) in self._table[['label', 'volume']].iterrows():
-            self._view.setItem(0, i, QTableWidgetItem(str(lab)))
-            self._view.setItem(1, i, QTableWidgetItem(str(vol)))
+            self._view.setItem(i, 0, QTableWidgetItem(str(lab)))
+            self._view.setItem(i, 1, QTableWidgetItem(str(vol)))

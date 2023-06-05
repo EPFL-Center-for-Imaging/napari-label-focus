@@ -35,6 +35,7 @@ class TableWidget(QWidget):
     def _add_rename_event(self, e):
         source_layer = e.value
         source_layer.events.name.connect(lambda _: self._on_layer_change(None))
+        source_layer.events.set_data.connect(lambda _: self.table.update_content(source_layer))
 
     def _on_layer_change(self, e):
         self.cb.clear()
