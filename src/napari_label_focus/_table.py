@@ -11,6 +11,7 @@ from qtpy.QtWidgets import (
     QTableWidgetItem,
     QWidget,
 )
+from qtpy.QtCore import Qt
 
 class Table(QWidget):
     def __init__(self, layer: napari.layers.Layer = None, viewer: napari.Viewer = None):
@@ -58,7 +59,7 @@ class Table(QWidget):
         self._viewer.camera.angles = (0.0, 0.0, 90.0)
 
         label_size = max(x1 - x0, y1 - y0)
-        self._viewer.camera.zoom = max(20 - 0.2 * label_size, 5)
+        self._viewer.camera.zoom = max(5 - 0.005 * label_size, 0.01)
 
         current_step = self._viewer.dims.current_step
         current_step = np.array(current_step)
@@ -105,6 +106,8 @@ class Table(QWidget):
         self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
         self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
 
-        for i, (lab, vol) in self._table[['label', 'volume']].iterrows():
-            self._view.setItem(i, 0, QTableWidgetItem(str(lab)))
-            self._view.setItem(i, 1, QTableWidgetItem(str(vol)))
+        k = 0
+        for _, (lab, vol) in self._table[['label', 'volume']].iterrows():
+            self._view.setItem(k, 0, QTableWidgetItem(str(lab)))
+            self._view.setItem(k, 1, QTableWidgetItem(str(vol)))
+            k += 1
