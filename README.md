@@ -1,6 +1,13 @@
 # napari-label-focus
 
-Easily focus the view on selected elements from a **Labels** layer. The plugin works on 2D and 3D images, but not on timeseries.
+Easily focus the view on selected elements from a **Labels** layer to inspect them.
+
+- The plugin works on 2D and 3D images.
+- The table shows the label index and volume (number of pixels) of each label.
+- Click on the table rows to focus the view on the corresponding label.
+- The table is updated when layers are added or removed from the viewer, selected from the dropdown, and when their data is modified.
+- The table is sorted by volume (biggest object on top).
+- You can save the table as a CSV file.
 
 <!-- <video width="320" height="240" controls>
   <source src="assets/video.mp4" type="video/mp4">
