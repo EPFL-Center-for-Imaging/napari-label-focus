@@ -1,6 +1,6 @@
 # napari-label-focus
 
-Easily focus the view on selected elements from a Labels layer.
+Easily focus the view on selected elements from a **Labels** layer. The plugin works on 2D and 3D images, but not on timeseries.
 
 <!-- <video width="320" height="240" controls>
   <source src="assets/video.mp4" type="video/mp4">
