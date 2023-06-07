@@ -2,9 +2,14 @@
 
 Easily focus the view on selected elements from a Labels layer.
 
-<video width="320" height="240" controls>
+<!-- <video width="320" height="240" controls>
   <source src="assets/video.mp4" type="video/mp4">
-</video>
+</video> -->
+
+<p align="center">
+    <img src="assets/gif01.gif" height="400">
+</p>
+
 
 ----------------------------------
 
