@@ -1,18 +1,10 @@
-from typing import TYPE_CHECKING
-
 import napari.layers
-from napari_tools_menu import register_dock_widget
 from qtpy.QtWidgets import QComboBox, QGridLayout, QWidget
 
 import napari.layers
 
 from ._table import Table
 
-if TYPE_CHECKING:
-    import napari
-
-
-@register_dock_widget(menu="Data table > Data table")
 class TableWidget(QWidget):
     def __init__(self, napari_viewer):
         super().__init__()
