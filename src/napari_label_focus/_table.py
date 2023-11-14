@@ -11,7 +11,6 @@ from qtpy.QtWidgets import (
     QTableWidgetItem,
     QWidget,
 )
-from qtpy.QtCore import Qt
 
 class Table(QWidget):
     def __init__(self, layer: napari.layers.Layer = None, viewer: napari.Viewer = None):
@@ -38,6 +37,21 @@ class Table(QWidget):
         action_widget.layout().setSpacing(3)
         action_widget.layout().setContentsMargins(0, 0, 0, 0)
 
+    @property
+    def dims_displayed(self):
+        return list(self._viewer.dims.displayed)
+    
+    @property
+    def axes(self):
+        if self._viewer.dims.ndisplay == 3:
+            return
+        
+        axes = self.dims_displayed
+        if self._layer.data.ndim == 3:
+            axes.insert(0, list(set([0, 1, 2]) - set(self.dims_displayed))[0])
+        
+        return axes
+
     def _clicked_table(self):
         row = self._view.currentRow()
         if self._layer is None:
@@ -45,27 +59,31 @@ class Table(QWidget):
 
         self._layer.selected_label = self._table["label"][row]
 
-        z0 = int(self._table["bbox-0"][row])
-        z1 = int(self._table["bbox-3"][row])
-        x0 = int(self._table["bbox-1"][row])
-        x1 = int(self._table["bbox-4"][row])
-        y0 = int(self._table["bbox-2"][row])
-        y1 = int(self._table["bbox-5"][row])
+        x0 = int(self._table["bbox-0"][row])
+        x1 = int(self._table["bbox-3"][row])
+        y0 = int(self._table["bbox-1"][row])
+        y1 = int(self._table["bbox-4"][row])
+        z0 = int(self._table["bbox-2"][row])
+        z1 = int(self._table["bbox-5"][row])
 
-        cx = (x1 + x0) / 2
-        cy = (y1 + y0) / 2
-        cz = int((z1 + z0) / 2)
-        self._viewer.camera.center = (0.0, cx, cy)
-        self._viewer.camera.angles = (0.0, 0.0, 90.0)
+        label_size = max(x1 - x0, y1 - y0, z1 - z0)
 
-        label_size = max(x1 - x0, y1 - y0)
+        # TODO: Make this compatible with layer transpose:
+        centers = np.array([(x1 + x0) / 2, (y1 + y0) / 2, (z1 + z0) / 2])
+
+        if self._viewer.dims.ndisplay == 3:
+            self._viewer.camera.center = (0.0, centers[1], centers[2])
+            self._viewer.camera.angles = (0.0, 0.0, 90.0)
+        else:
+            current_center = np.array(self._viewer.camera.center)
+            current_center[1] = centers[self.axes[1]]
+            current_center[2] = centers[self.axes[2]]
+            self._viewer.camera.center = tuple(current_center)
+            current_step = np.array(self._viewer.dims.current_step)[self.axes]
+            current_step[self.axes[0]] = int(centers[self.axes[0]])
+            self._viewer.dims.current_step = tuple(current_step)
+
         self._viewer.camera.zoom = max(5 - 0.005 * label_size, 0.01)
-
-        current_step = self._viewer.dims.current_step
-        current_step = np.array(current_step)
-        current_step[0] = cz
-        current_step = tuple(current_step)
-        self._viewer.dims.current_step = current_step
 
     def _save_csv(self):
         if self._layer is None:
