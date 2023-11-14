@@ -27,9 +27,6 @@ class TableWidget(QWidget):
         self.viewer.layers.events.removed.connect(self._on_layer_change)
         self._on_layer_change(None)
 
-        # import skimage.data; self.viewer.add_image(skimage.data.coins())
-        import skimage.data; self.viewer.add_image(skimage.data.brain())
-
     def _on_layer_change(self, e):
         self.cb.clear()
         for x in self.viewer.layers:
