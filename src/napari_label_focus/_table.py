@@ -95,7 +95,7 @@ class Table(QWidget):
                 current_step[self.axes[0]] = int(centers[self.axes[0]])
                 self._viewer.dims.current_step = tuple(current_step)
 
-        self._viewer.camera.zoom = 3 - label_size * 0.005
+        self._viewer.camera.zoom = max(3 - label_size * 0.005, 1.0)
 
     def _save_csv(self):
         if self._layer is None:
