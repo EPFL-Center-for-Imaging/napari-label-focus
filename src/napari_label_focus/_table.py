@@ -21,6 +21,8 @@ class Table(QWidget):
         self._view.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._view.setColumnCount(2)
         self._view.setRowCount(1)
+        self._view.setColumnWidth(0, 30)
+        self._view.setColumnWidth(1, 120)
         self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
         self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
         self._view.clicked.connect(self._clicked_table)
@@ -68,22 +70,32 @@ class Table(QWidget):
 
         label_size = max(x1 - x0, y1 - y0, z1 - z0)
 
-        # TODO: Make this compatible with layer transpose:
         centers = np.array([(x1 + x0) / 2, (y1 + y0) / 2, (z1 + z0) / 2])
 
+        # Note - there is probably something easier to set up with viewer.camera.calculate_nd_view_direction()
         if self._viewer.dims.ndisplay == 3:
             self._viewer.camera.center = (0.0, centers[1], centers[2])
             self._viewer.camera.angles = (0.0, 0.0, 90.0)
         else:
-            current_center = np.array(self._viewer.camera.center)
-            current_center[1] = centers[self.axes[1]]
-            current_center[2] = centers[self.axes[2]]
-            self._viewer.camera.center = tuple(current_center)
-            current_step = np.array(self._viewer.dims.current_step)[self.axes]
-            current_step[self.axes[0]] = int(centers[self.axes[0]])
-            self._viewer.dims.current_step = tuple(current_step)
+            if len(self.axes) == 2:
+                # 2D case
+                current_center = np.array(self._viewer.camera.center)
+                current_center[1] = centers[1:][self.axes][0]
+                current_center[2] = centers[1:][self.axes][1]
+                self._viewer.camera.center = tuple(current_center)
+                
+            elif len(self.axes) == 3:
+                # 3D case
+                current_center = np.array(self._viewer.camera.center)
+                current_center[1] = centers[self.axes[1]]
+                current_center[2] = centers[self.axes[2]]
+                self._viewer.camera.center = tuple(current_center)
 
-        self._viewer.camera.zoom = max(5 - 0.005 * label_size, 0.01)
+                current_step = np.array(self._viewer.dims.current_step)[self.axes]
+                current_step[self.axes[0]] = int(centers[self.axes[0]])
+                self._viewer.dims.current_step = tuple(current_step)
+
+        self._viewer.camera.zoom = 3 - label_size * 0.005
 
     def _save_csv(self):
         if self._layer is None:
@@ -100,11 +112,13 @@ class Table(QWidget):
         if self._layer is None:
             self._view.clear()
             self._view.setRowCount(1)
+            self._view.setColumnWidth(0, 30)
+            self._view.setColumnWidth(1, 120)
             self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
             self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
             return
 
-        labels = self._layer.data
+        labels = self._layer.data.copy()
         if labels.sum() == 0:
             return
         

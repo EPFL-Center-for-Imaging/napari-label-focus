@@ -14,11 +14,11 @@ class TableWidget(QWidget):
 
         self.setLayout(QGridLayout())
         self.cb = QComboBox()
+        self.cb.currentTextChanged.connect(self._on_cb_change)
         self.layout().addWidget(self.cb, 0, 0)
+
         self.table = Table(viewer=self.viewer)
         self.layout().addWidget(self.table, 1, 0)
-
-        self.cb.currentTextChanged.connect(self._on_cb_change)
 
         self.viewer.layers.events.inserted.connect(
             lambda e: e.value.events.name.connect(self._on_layer_change)
@@ -44,8 +44,10 @@ class TableWidget(QWidget):
         
         if self.labels_layer is not None:
             self.labels_layer.events.labels_update.disconnect(lambda _: self.table.update_content(self.labels_layer))
+            self.labels_layer.events.data.disconnect(lambda _: self.table.update_content(self.labels_layer))
         
         selected_layer.events.labels_update.connect(lambda _: self.table.update_content(selected_layer))
+        selected_layer.events.data.connect(lambda _: self.table.update_content(selected_layer))
 
         self.labels_layer = selected_layer
         self.table.update_content(selected_layer)
