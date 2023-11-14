@@ -59,14 +59,14 @@ class Table(QWidget):
         if self._layer is None:
             return
 
-        self._layer.selected_label = self._table["label"][row]
+        self._layer.selected_label = self.df["label"].values[row]
 
-        x0 = int(self._table["bbox-0"][row])
-        x1 = int(self._table["bbox-3"][row])
-        y0 = int(self._table["bbox-1"][row])
-        y1 = int(self._table["bbox-4"][row])
-        z0 = int(self._table["bbox-2"][row])
-        z1 = int(self._table["bbox-5"][row])
+        x0 = int(self.df["bbox-0"].values[row])
+        x1 = int(self.df["bbox-3"].values[row])
+        y0 = int(self.df["bbox-1"].values[row])
+        y1 = int(self.df["bbox-4"].values[row])
+        z0 = int(self.df["bbox-2"].values[row])
+        z1 = int(self.df["bbox-5"].values[row])
 
         label_size = max(x1 - x0, y1 - y0, z1 - z0)
 
@@ -105,7 +105,7 @@ class Table(QWidget):
             self, "Save as CSV", ".", "*.csv"
         )
 
-        pd.DataFrame(self._table).to_csv(filename)
+        pd.DataFrame(self.df).to_csv(filename)
 
     def update_content(self, layer: napari.layers.Labels):
         self._layer = layer
@@ -126,20 +126,17 @@ class Table(QWidget):
             labels = labels[None]  # Add an extra dimension
         
         properties = skimage.measure.regionprops_table(labels, properties=["label", "area", "bbox"])
-        df = pd.DataFrame.from_dict(properties)
-        df.rename(columns={"area": "volume"}, inplace=True)
-        df.sort_values(by="volume", ascending=False, inplace=True)
-        self.set_content(df)
+        self.df = pd.DataFrame.from_dict(properties)
+        self.df.rename(columns={"area": "volume"}, inplace=True)
+        self.df.sort_values(by="volume", ascending=False, inplace=True)
 
-    def set_content(self, df: pd.DataFrame):
-        self._table = df
         self._view.clear()
-        self._view.setRowCount(len(self._table))
+        self._view.setRowCount(len(self.df))
         self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
         self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
 
         k = 0
-        for _, (lab, vol) in self._table[['label', 'volume']].iterrows():
+        for _, (lab, vol) in self.df[['label', 'volume']].iterrows():
             self._view.setItem(k, 0, QTableWidgetItem(str(lab)))
             self._view.setItem(k, 1, QTableWidgetItem(str(vol)))
             k += 1
