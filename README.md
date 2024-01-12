@@ -1,3 +1,4 @@
+![EPFL Center for Imaging logo](https://imaging.epfl.ch/resources/logo-for-gitlab.svg)
 # napari-label-focus
 
 Easily focus the view on selected elements from a **Labels** layer to inspect them.
@@ -9,35 +10,19 @@ Easily focus the view on selected elements from a **Labels** layer to inspect th
 - The table is sorted by volume (biggest object on top).
 - You can save the table as a CSV file.
 
-<!-- <video width="320" height="240" controls>
-  <source src="assets/video.mp4" type="video/mp4">
-</video> -->
-
 <p align="center">
     <img src="assets/gif01.gif" height="400">
 </p>
 
-
 ----------------------------------
 
 This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.
-
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/cookiecutter-napari-plugin#getting-started
-
-and review the napari docs for plugin developers:
-https://napari.org/stable/plugins/index.html
--->
 
 ## Installation
 
 You can install `napari-label-focus` via [pip]:
 
     pip install napari-label-focus
-
-
-
 
 ## Contributing
 
@@ -52,6 +37,10 @@ Distributed under the terms of the [BSD-3] license,
 ## Issues
 
 If you encounter any problems, please file an issue along with a detailed description.
+
+----------------------------------
+
+This [napari] plugin is an output of a collaborative project between the [EPFL Center for Imaging](https://imaging.epfl.ch/) and the [De Palma Lab](https://www.epfl.ch/labs/depalma-lab/) in 2023.
 
 [napari]: https://github.com/napari/napari
 [Cookiecutter]: https://github.com/audreyr/cookiecutter
