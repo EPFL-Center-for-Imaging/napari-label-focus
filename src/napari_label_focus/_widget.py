@@ -31,7 +31,8 @@ class TableWidget(QWidget):
         self.cb.clear()
         for x in self.viewer.layers:
             if isinstance(x, napari.layers.Labels):
-                self.cb.addItem(x.name, x.data)
+                if len(x.data.shape) in [2, 3]:  # Only 2D and 3D data are supported.
+                    self.cb.addItem(x.name, x.data)
 
     def _on_cb_change(self, selection: str):
         if selection == '':
