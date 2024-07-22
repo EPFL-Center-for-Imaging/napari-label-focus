@@ -47,8 +47,11 @@ class TableWidget(QWidget):
             self.labels_layer.events.labels_update.disconnect(lambda _: self.table.update_content(self.labels_layer))
             self.labels_layer.events.data.disconnect(lambda _: self.table.update_content(self.labels_layer))
         
-        selected_layer.events.labels_update.connect(lambda _: self.table.update_content(selected_layer))
+        # Updating live as pixels are drawn is too expensive (labels_update)
+        # selected_layer.events.labels_update.connect(lambda _: self.table.update_content(selected_layer))
         selected_layer.events.data.connect(lambda _: self.table.update_content(selected_layer))
+        # Instead we update the table only when the mouse is up after drawing.
+        selected_layer.events.paint.connect(lambda _: self.table.update_content(selected_layer))
 
         self.labels_layer = selected_layer
         self.table.update_content(selected_layer)
