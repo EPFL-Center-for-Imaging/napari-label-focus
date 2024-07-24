@@ -31,7 +31,7 @@ class TableWidget(QWidget):
         self.cb.clear()
         for x in self.viewer.layers:
             if isinstance(x, napari.layers.Labels):
-                if len(x.data.shape) in [2, 3]:  # Only 2D and 3D data are supported.
+                if len(x.data.shape) in [2, 3, 4]:  # Only 2D-4D data are supported.
                     self.cb.addItem(x.name, x.data)
 
     def _on_cb_change(self, selection: str):
@@ -44,14 +44,23 @@ class TableWidget(QWidget):
             return
         
         if self.labels_layer is not None:
-            self.labels_layer.events.labels_update.disconnect(lambda _: self.table.update_content(self.labels_layer))
+            # self.labels_layer.events.labels_update.disconnect(lambda _: self.table.update_content(self.labels_layer))
+            self.labels_layer.events.paint.disconnect(lambda _: self.table.update_content(self.labels_layer))
             self.labels_layer.events.data.disconnect(lambda _: self.table.update_content(self.labels_layer))
         
         # Updating live as pixels are drawn is too expensive (labels_update)
         # selected_layer.events.labels_update.connect(lambda _: self.table.update_content(selected_layer))
+        
+        # Not sure what this does - it's probably useful
         selected_layer.events.data.connect(lambda _: self.table.update_content(selected_layer))
+        
         # Instead we update the table only when the mouse is up after drawing.
         selected_layer.events.paint.connect(lambda _: self.table.update_content(selected_layer))
 
+        # Temporary
+        if selected_layer.data.ndim == 4:
+            self.viewer.dims.events.current_step.connect(lambda e: self.table.handle_time_axis_changed(e, selected_layer))
+
         self.labels_layer = selected_layer
+
         self.table.update_content(selected_layer)

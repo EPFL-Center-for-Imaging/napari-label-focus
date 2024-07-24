@@ -39,18 +39,26 @@ class Table(QWidget):
         action_widget.layout().setSpacing(3)
         action_widget.layout().setContentsMargins(0, 0, 0, 0)
 
-    @property
-    def dims_displayed(self):
-        return list(self._viewer.dims.displayed)
-    
+        self.df = None
+        self.current_time = None
+
     @property
     def axes(self):
         if self._viewer.dims.ndisplay == 3:
             return
         
-        axes = self.dims_displayed
+        # 2D case
+        axes = list(self._viewer.dims.displayed)
+
+        # 3D case
         if self._layer.data.ndim == 3:
-            axes.insert(0, list(set([0, 1, 2]) - set(self.dims_displayed))[0])
+            axes.insert(0, list(set([0, 1, 2]) - set(list(self._viewer.dims.displayed)))[0])
+
+        # 4D case (not used yet)
+        elif self._layer.data.ndim == 4:
+            xxx = set(self._viewer.dims.displayed)
+            to_add = list(set([0, 1, 2, 3]) - xxx)
+            axes = to_add + axes
         
         return axes
 
@@ -77,23 +85,23 @@ class Table(QWidget):
             self._viewer.camera.center = (0.0, centers[1], centers[2])
             self._viewer.camera.angles = (0.0, 0.0, 90.0)
         else:
+            current_center = np.array(self._viewer.camera.center)
+
             if len(self.axes) == 2:
-                # 2D case
-                current_center = np.array(self._viewer.camera.center)
                 current_center[1] = centers[1:][self.axes][0]
-                current_center[2] = centers[1:][self.axes][1]
-                self._viewer.camera.center = tuple(current_center)
-                
+                current_center[2] = centers[1:][self.axes][1]                
             elif len(self.axes) == 3:
-                # 3D case
-                current_center = np.array(self._viewer.camera.center)
                 current_center[1] = centers[self.axes[1]]
                 current_center[2] = centers[self.axes[2]]
-                self._viewer.camera.center = tuple(current_center)
-
+                # In 3D, also adjust the current step
                 current_step = np.array(self._viewer.dims.current_step)[self.axes]
                 current_step[self.axes[0]] = int(centers[self.axes[0]])
                 self._viewer.dims.current_step = tuple(current_step)
+
+            elif len(self.axes) == 4:
+                print("4D case not implemented yet.")
+
+            self._viewer.camera.center = tuple(current_center)
 
         self._viewer.camera.zoom = max(3 - label_size * 0.005, 1.0)
 
@@ -107,6 +115,32 @@ class Table(QWidget):
 
         pd.DataFrame(self.df).to_csv(filename)
 
+    def updated_content_2D_or_3D(self, labels):
+        """Compute volumes and update the table UI in the 2D and 3D cases."""
+        properties = skimage.measure.regionprops_table(labels, properties=["label", "area", "bbox"])
+        self.df = pd.DataFrame.from_dict(properties)
+        self.df.rename(columns={"area": "volume"}, inplace=True)
+        self.df.sort_values(by="volume", ascending=False, inplace=True)
+
+        # Regenerate the table UI
+        self._view.clear()
+        self._view.setRowCount(len(self.df))
+        self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
+        self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
+
+        k = 0
+        for _, (lab, vol) in self.df[['label', 'volume']].iterrows():
+            self._view.setItem(k, 0, QTableWidgetItem(str(lab)))
+            self._view.setItem(k, 1, QTableWidgetItem(str(vol)))
+            k += 1
+
+    def handle_time_axis_changed(self, event, source_layer):
+        current_time = event.value[0]
+        if (current_time != self.current_time) | (self.current_time is None):
+            # This gets called multiple times when moving forward in time. Why?
+            self.current_time = current_time
+            self.update_content(source_layer)
+
     def update_content(self, layer: napari.layers.Labels):
         self._layer = layer
         if self._layer is None:
@@ -118,25 +152,15 @@ class Table(QWidget):
             self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
             return
 
-        labels = self._layer.data.copy()
+        labels = self._layer.data#.copy()
+
+        if len(labels.shape) == 2:
+            labels = labels[None]  # Add an extra dimension in the 2D case
+        
+        elif len(labels.shape) == 4:
+            labels = labels[self._viewer.dims.current_step[0]]
+
         if labels.sum() == 0:
             return
-        
-        if len(labels.shape) == 2:
-            labels = labels[None]  # Add an extra dimension
-        
-        properties = skimage.measure.regionprops_table(labels, properties=["label", "area", "bbox"])
-        self.df = pd.DataFrame.from_dict(properties)
-        self.df.rename(columns={"area": "volume"}, inplace=True)
-        self.df.sort_values(by="volume", ascending=False, inplace=True)
 
-        self._view.clear()
-        self._view.setRowCount(len(self.df))
-        self._view.setHorizontalHeaderItem(0, QTableWidgetItem('label'))
-        self._view.setHorizontalHeaderItem(1, QTableWidgetItem('volume'))
-
-        k = 0
-        for _, (lab, vol) in self.df[['label', 'volume']].iterrows():
-            self._view.setItem(k, 0, QTableWidgetItem(str(lab)))
-            self._view.setItem(k, 1, QTableWidgetItem(str(vol)))
-            k += 1
+        self.updated_content_2D_or_3D(labels)
