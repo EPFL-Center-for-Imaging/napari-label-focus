@@ -89,12 +89,6 @@ class Table(QWidget):
         y1 = int(sub_df['bbox-4'].values[0])
         z0 = int(sub_df['bbox-2'].values[0])
         z1 = int(sub_df['bbox-5'].values[0])
-        # x0 = int(self.df["bbox-0"].values[row])
-        # x1 = int(self.df["bbox-3"].values[row])
-        # y0 = int(self.df["bbox-1"].values[row])
-        # y1 = int(self.df["bbox-4"].values[row])
-        # z0 = int(self.df["bbox-2"].values[row])
-        # z1 = int(self.df["bbox-5"].values[row])
 
         label_size = max(x1 - x0, y1 - y0, z1 - z0)
 
