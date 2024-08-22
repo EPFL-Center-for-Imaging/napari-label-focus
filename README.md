@@ -3,7 +3,7 @@
 
 Easily focus the view on selected elements from a **Labels** layer to inspect them.
 
-- The plugin works on 2D and 3D images.
+- The plugin works on 2D, 2D+time, 3D, and 4D images.
 - The table shows the label index and volume (number of pixels) of each label.
 - Click on the table rows to focus the view on the corresponding label.
 - The table is updated when layers are added or removed from the viewer, selected from the dropdown, and when their data is modified.
