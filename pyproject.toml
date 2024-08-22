@@ -1,10 +1,51 @@
+[project]
+name = "napari-label-focus"
+dynamic = ["version"]
+description = "Easily focus the view on selected elements form a Labels layer."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [{ name = "Mallory Wittwer", email = "mallory.wittwer@epfl.ch" }]
+
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+dependencies = [
+    "napari[all]>=0.4.16",
+    "qtpy",
+    "magicgui",
+    "numpy",
+    "pandas",
+    "scikit-image",
+]
+
+[project.entry-points."napari.manifest"]
+napari_label_focus = "napari_label_focus:napari.yaml"
+
+[project.urls]
+homepage = "https://github.com/EPFL-Center-for-Imaging/napari-label-focus"
+repository = "https://github.com/EPFL-Center-for-Imaging/napari-label-focus"
+
 [build-system]
-requires = ["setuptools>=42.0.0", "wheel"]
+requires = ["setuptools>=42.0.0", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
-[tool.black]
-line-length = 79
+[tool.setuptools]
+include-package-data = true
 
-[tool.isort]
-profile = "black"
-line_length = 79
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml"]
+
+[tool.setuptools_scm]
+write_to = "src/napari_label_focus/_version.py"
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
