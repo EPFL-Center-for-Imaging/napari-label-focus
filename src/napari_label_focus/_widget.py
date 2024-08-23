@@ -42,22 +42,28 @@ class TableWidget(QWidget):
         self.viewer.layers.selection.events.changed.connect(
             self._on_layer_selection_changed
         )
+        self.viewer.layers.events.inserted.connect(
+            lambda e: self._on_layer_selection_changed(None)
+        )
+        self._on_layer_selection_changed(None)
 
     def _on_layer_selection_changed(self, event):
-        selected_layer = event.source.active
-        if not isinstance(selected_layer, napari.layers.Labels):
-            return
+        if event is None:
+            selected_layer = self.viewer.layers.selection.active
+        else:
+            selected_layer = event.source.active
 
         if self.selected_labels_layer is not None:
             self.selected_labels_layer.events.paint.disconnect(self.update_table_content)
             self.selected_labels_layer.events.data.disconnect(self.update_table_content)
-            if selected_layer.data.ndim == 4:
+            if self.selected_labels_layer.data.ndim == 4:
                 self.viewer.dims.events.current_step.disconnect(self.handle_time_axis_changed)
 
-        selected_layer.events.data.connect(self.update_table_content)
-        selected_layer.events.paint.connect(self.update_table_content)
-        if selected_layer.data.ndim == 4:
-            self.viewer.dims.events.current_step.connect(self.handle_time_axis_changed)
+        if isinstance(selected_layer, napari.layers.Labels):
+            selected_layer.events.data.connect(self.update_table_content)
+            selected_layer.events.paint.connect(self.update_table_content)
+            if selected_layer.data.ndim == 4:
+                self.viewer.dims.events.current_step.connect(self.handle_time_axis_changed)
 
         self.selected_labels_layer = selected_layer
 
