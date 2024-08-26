@@ -1,5 +1,6 @@
 import napari
 import napari.layers
+import napari.layers.labels
 import numpy as np
 import pandas as pd
 import skimage.measure
@@ -53,7 +54,7 @@ class TableWidget(QWidget):
         else:
             selected_layer = event.source.active
 
-        if self.selected_labels_layer is not None:
+        if isinstance(self.selected_labels_layer, napari.layers.Labels):
             self.selected_labels_layer.events.paint.disconnect(self.update_table_content)
             self.selected_labels_layer.events.data.disconnect(self.update_table_content)
             if self.selected_labels_layer.data.ndim == 4:
@@ -186,7 +187,7 @@ class TableWidget(QWidget):
                 self.handle_selected_table_label_changed(current_selected_label)
 
     def update_table_content(self):
-        if self.selected_labels_layer is None:
+        if not isinstance(self.selected_labels_layer, napari.layers.Labels):
             self._table.clear()
             self._table.setRowCount(1)
             self._table.setColumnWidth(0, 30)
