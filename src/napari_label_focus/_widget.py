@@ -11,6 +11,8 @@ from qtpy.QtWidgets import (
     QTableWidgetItem,
     QCheckBox,
     QLabel,
+    QFileDialog,
+    QPushButton,
 )
 
 class TableWidget(QWidget):
@@ -28,6 +30,10 @@ class TableWidget(QWidget):
         self.follow_objects_checkbox.setChecked(False)
         self.layout().addWidget(self.follow_objects_checkbox, 0, 1)
 
+        save_button = QPushButton("Save as CSV")
+        save_button.clicked.connect(lambda _: self._save_csv())
+        self.layout().addWidget(save_button, 1, 0, 1, 2)
+
         self._table = QTableWidget()
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setColumnCount(2)
@@ -38,7 +44,7 @@ class TableWidget(QWidget):
         self._table.setHorizontalHeaderItem(1, QTableWidgetItem("volume"))
         self._table.clicked.connect(self._clicked_table)
 
-        self.layout().addWidget(self._table, 1, 0, 1, 2)
+        self.layout().addWidget(self._table, 2, 0, 1, 2)
 
         self.viewer.layers.selection.events.changed.connect(
             self._on_layer_selection_changed
@@ -208,3 +214,13 @@ class TableWidget(QWidget):
             return
 
         self.updated_content_2D_or_3D(labels)
+
+    def _save_csv(self):
+        if self.df is None:
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save as CSV", ".", "*.csv"
+        )
+
+        pd.DataFrame(self.df[['label', 'volume']]).to_csv(filename)
