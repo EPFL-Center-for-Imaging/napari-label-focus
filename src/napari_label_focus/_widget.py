@@ -4,7 +4,7 @@ import napari
 import napari.layers
 import numpy as np
 import pandas as pd
-from napari.utils.notifications import show_warning
+from napari.utils.notifications import show_warning, show_info
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -14,6 +14,8 @@ from qtpy.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QWidget,
+    QPushButton,
+    QFileDialog,
 )
 
 from napari_label_focus._context import SelectionContext
@@ -182,8 +184,8 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         self.setLayout(QGridLayout())
 
-        ### Triggered function ###
-        self.table_click_callbacks = [default_table_click_event]  # Default behaviour
+        ### Table click events ###
+        self.table_click_callbacks = [default_table_click_event]
         if table_click_callbacks is not None:
             for func in table_click_callbacks:
                 self.table_click_callbacks.append(func)
@@ -218,6 +220,11 @@ class ConfigurableFeaturesTableWidget(QWidget):
         self.table.clicked.connect(self._clicked_table)
         # TODO: Create an expansible layout for the table...
         self.layout().addWidget(self.table, 2, 0, 1, 4)
+        
+        # Save as CSV button
+        save_button = QPushButton("Save as CSV")
+        save_button.clicked.connect(self._save_csv)
+        self.layout().addWidget(save_button, 3, 0, 1, 4)
 
         # Layer events
         self.viewer.layers.selection.events.changed.connect(
@@ -251,6 +258,15 @@ class ConfigurableFeaturesTableWidget(QWidget):
             # selected_layer.events.features.connect(self._update_labels_df)
             selected_layer.events.selected_label.connect(self._selected_label_changed)
 
+    def _save_csv(self, e):
+        selection_meta = self.state[self.selected_layer]
+        df = selection_meta.get("df")
+        if df is None:
+            return
+        filename, _ = QFileDialog.getSaveFileName(self, "Save as CSV", ".", "*.csv")
+        df.to_csv(filename)
+        show_info(f"Saved: {filename}")
+    
     def _selected_label_changed(self, event):
         layer = event.sources[0]
         if isinstance(layer, napari.layers.Labels):
