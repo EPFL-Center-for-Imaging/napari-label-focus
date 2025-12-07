@@ -1,10 +1,10 @@
 name: napari-label-focus
-display_name: Napari Label Focus
+display_name: Configurable Features Table
 contributions:
   commands:
     - id: napari-label-focus.table
-      title: Data table
-      python_name: napari_label_focus:TableWidget
+      title: Features Table
+      python_name: napari_label_focus:ConfigurableFeaturesTableWidget
   widgets:
     - command: napari-label-focus.table
-      display_name: Data table
+      display_name: Features Table

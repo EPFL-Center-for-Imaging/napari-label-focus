@@ -1,5 +1,3 @@
-from ._widget import TableWidget
+from ._widget import ConfigurableFeaturesTableWidget
 
-__all__ = (
-    "TableWidget",
-)
+__all__ = ("ConfigurableFeaturesTableWidget",)
