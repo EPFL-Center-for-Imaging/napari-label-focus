@@ -1,226 +1,283 @@
+from typing import Callable, Dict, List, Optional
+
 import napari
 import napari.layers
-import napari.layers.labels
 import numpy as np
 import pandas as pd
 import skimage.measure
+from napari.utils.notifications import show_warning
+from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
 from qtpy.QtWidgets import (
-    QGridLayout, 
-    QWidget, 
-    QTableWidget, 
-    QTableWidgetItem,
     QCheckBox,
+    QComboBox,
+    QGridLayout,
     QLabel,
-    QFileDialog,
-    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QWidget,
 )
 
+from napari_label_focus._context import SelectionContext
+from napari_label_focus._event import label_focus
+
+
+def _sync_table_with_context(table: QTableWidget, table_ctx: Dict, selected_label: Optional[int] = None) -> None:
+    df = table_ctx["df"]
+    if df is None:
+        _reset_table(table)
+        return
+    
+    sort_by = table_ctx["sort_by"]
+    ascending = table_ctx["ascending"]
+    props_ui = table_ctx["props_ui"]
+
+    # Sort the dataframe
+    if sort_by in df.columns:
+        df.sort_values(by=sort_by, ascending=ascending, inplace=True)
+    
+    # Filter columns to show
+    columns_to_show = []
+    for k, v in props_ui.items():
+        if (v.isChecked()) & (k in df.columns):
+            columns_to_show.append(k)
+    df_filtered = df[columns_to_show]
+
+    # Update the table UI
+    table.setVisible(True)
+    table.setRowCount(len(df_filtered))
+    table.setColumnCount(len(df_filtered.columns))
+    for icol, col in enumerate(df_filtered.columns):
+        table.setHorizontalHeaderItem(icol, QTableWidgetItem(col))
+    for k, (_, row) in enumerate(df_filtered.iterrows()):
+        for i, col in enumerate(row.index):
+            val = str(row[col])
+            table.setItem(k, i, QTableWidgetItem(val))
+            if (selected_label is not None) & (col == "label") & (int(float(val)) == selected_label):
+                table.selectRow(k)
+
+
+def _reset_table(table: QTableWidget) -> QTableWidget:
+    table.clear()
+    table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    table.setColumnCount(1)
+    table.setRowCount(1)
+    table.setVisible(False)
+    return table
+
+
+def _create_labels_df(labels_layer: napari.layers.Labels):
+    labels = labels_layer.data
+
+    if not isinstance(labels, np.ndarray):
+        show_warning("Labels data should be a Numpy array")
+        return
+
+    if labels.ndim not in [2, 3]:
+        show_warning("Labels data should be 2D or 3D")
+        return
+
+    if labels.sum() == 0:
+        show_warning("Labels data are only zero")
+        return
+
+    # TODO: This should call a configurable "featurize" method Callable[labels, DataFrame]
+    df = pd.DataFrame(skimage.measure.regionprops_table(labels, properties=["label"]))
+
+    # Merge existing features on the `label` column (TODO: improve this!)
+    layer_features = labels_layer.features
+    if ("label" in df.columns) and ("label" in layer_features.columns):
+        df = pd.merge(df, layer_features, on="label")
+
+    return df
+
+
 class TableWidget(QWidget):
-    def __init__(self, napari_viewer):
+    def __init__(
+        self,
+        napari_viewer: napari.Viewer,
+        trigger_fnct: Optional[List[Callable[[SelectionContext], None]]] = None,
+    ):
         super().__init__()
         self.viewer = napari_viewer
-        self.selected_labels_layer = None
-        self.df = None
-        self.current_time = None
+
+        self.selected_layer: Optional[napari.layers.Layer] = None
+        self.state = {}
 
         self.setLayout(QGridLayout())
 
-        self.layout().addWidget(QLabel("Follow objects in time", self), 0, 0)
-        self.follow_objects_checkbox = QCheckBox()
-        self.follow_objects_checkbox.setChecked(False)
-        self.layout().addWidget(self.follow_objects_checkbox, 0, 1)
+        ### Triggered function ###
+        self.trigger_fnct = [label_focus]  # Default behaviour
+        if trigger_fnct is not None:
+            for func in trigger_fnct:
+                self.trigger_fnct.append(func)
+        ### ------------------ ###
 
-        save_button = QPushButton("Save as CSV")
-        save_button.clicked.connect(lambda _: self._save_csv())
-        self.layout().addWidget(save_button, 1, 0, 1, 2)
+        # Sort table
+        self.layout().addWidget(QLabel("Sort by", self), 0, 0)
+        self.sort_by_cb = QComboBox()
+        self.layout().addWidget(self.sort_by_cb, 0, 1)
+        self.sort_by_cb.currentTextChanged.connect(self._sort_changed)
+        self.layout().addWidget(QLabel("Ascending", self), 0, 2)
+        self.sort_ascending = QCheckBox()
+        self.sort_ascending.setChecked(True)
+        self.sort_ascending.toggled.connect(self._ascending_changed)
+        self.layout().addWidget(self.sort_ascending, 0, 3)
 
-        self._table = QTableWidget()
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setColumnCount(2)
-        self._table.setRowCount(1)
-        self._table.setColumnWidth(0, 30)
-        self._table.setColumnWidth(1, 120)
-        self._table.setHorizontalHeaderItem(0, QTableWidgetItem("label"))
-        self._table.setHorizontalHeaderItem(1, QTableWidgetItem("volume"))
-        self._table.clicked.connect(self._clicked_table)
+        # Show properties
+        self.show_props_gb = QCollapsibleGroupBox("Show properties")
+        self.show_props_gb.setChecked(False)
+        self.sp_layout = QGridLayout(self.show_props_gb)
+        self.layout().addWidget(self.show_props_gb, 1, 0, 1, 4)
 
-        self.layout().addWidget(self._table, 2, 0, 1, 2)
+        # Table
+        self.table = _reset_table(QTableWidget())
+        self.table.clicked.connect(self._clicked_table)
+        # TODO: Create an expansible layout for the table...
+        self.layout().addWidget(self.table, 2, 0, 1, 4)
 
+        # Layer events
         self.viewer.layers.selection.events.changed.connect(
-            self._on_layer_selection_changed
+            self._layer_selection_changed
         )
         self.viewer.layers.events.inserted.connect(
-            lambda e: self._on_layer_selection_changed(None)
+            lambda e: self._layer_selection_changed(None)
         )
-        self._on_layer_selection_changed(None)
+        self._layer_selection_changed(None)
 
-    def _on_layer_selection_changed(self, event):
+    def _new_layer_selected(self, selected_layer):
+        self.state[self.selected_layer] = {
+            "props_ui": {},
+            "sort_by": None,
+            "ascending": self.sort_ascending.isChecked(),
+            "df": None,
+        }
+
+        if isinstance(self.selected_layer, napari.layers.Labels):
+            self.selected_layer.events.paint.disconnect(self._update_labels_df)
+            self.selected_layer.events.data.disconnect(self._update_labels_df)
+            self.selected_layer.events.features.disconnect(self._update_labels_df)
+            self.selected_layer.events.selected_label.disconnect(self._selected_label_changed)
+
+        if isinstance(selected_layer, napari.layers.Labels):
+            selected_layer.events.data.connect(self._update_labels_df)
+            selected_layer.events.paint.connect(self._update_labels_df)
+            selected_layer.events.features.connect(self._update_labels_df)
+            selected_layer.events.selected_label.connect(self._selected_label_changed)
+
+    def _selected_label_changed(self, event):
+        layer = event.sources[0]
+        if isinstance(layer, napari.layers.Labels):
+            lpui = self.state[self.selected_layer]
+            _sync_table_with_context(self.table, lpui, selected_label=layer.selected_label)
+        
+    def _layer_selection_changed(self, event):
         if event is None:
             selected_layer = self.viewer.layers.selection.active
         else:
             selected_layer = event.source.active
 
-        if isinstance(self.selected_labels_layer, napari.layers.Labels):
-            self.selected_labels_layer.events.paint.disconnect(self.update_table_content)
-            self.selected_labels_layer.events.data.disconnect(self.update_table_content)
-            if self.selected_labels_layer.data.ndim == 4:
-                self.viewer.dims.events.current_step.disconnect(self.handle_time_axis_changed)
+        self.selected_layer = selected_layer
 
-        if isinstance(selected_layer, napari.layers.Labels):
-            selected_layer.events.data.connect(self.update_table_content)
-            selected_layer.events.paint.connect(self.update_table_content)
-            if selected_layer.data.ndim == 4:
-                self.viewer.dims.events.current_step.connect(self.handle_time_axis_changed)
+        if not self.selected_layer in self.state:
+            self._new_layer_selected(selected_layer)
 
-        self.selected_labels_layer = selected_layer
+        self._update_labels_df()
 
-        self.update_table_content()
+    def _update_labels_df(self):
+        if isinstance(self.selected_layer, napari.layers.Labels):
+            self.state[self.selected_layer]["df"] = _create_labels_df(
+                self.selected_layer
+            )
+        self.update_ui()
 
-    @property
-    def axes(self):
-        if self.viewer.dims.ndisplay == 3:
+    def update_ui(self) -> None:
+        lpui = self.state[self.selected_layer]
+
+        # Update sort dropdown
+        self._update_sort_cb(lpui)
+
+        # Update ascending state
+        self._update_ascending(lpui)
+
+        # Update visible properties
+        self._update_visible_props(lpui)
+
+        # Sort and update the table
+        self._update_table()
+
+    def _update_ascending(self, lpui):
+        self.sort_ascending.setChecked(lpui["ascending"])
+
+    def _update_sort_cb(self, lpui):
+        self.sort_by_cb.clear()
+        if lpui.get("df") is not None:
+
+            # items = []  # TODO: THIS DOESNT WORK
+            # for k, v in lpui["props_ui"]:
+            #     if v.isChecked():
+            #         items.append(k)
+            # self.sort_by_cb.addItems(items)
+
+            self.sort_by_cb.addItems(lpui["df"].columns)
+        if lpui.get("sort_by") is not None:
+            for i, c in enumerate(lpui["df"].columns):
+                if c == lpui["sort_by"]:
+                    self.sort_by_cb.setCurrentIndex(i)
+
+    def _update_visible_props(self, lpui):
+        for i in reversed(range(self.sp_layout.count())):
+            ui_item = self.sp_layout.itemAt(i)
+            if ui_item is not None:
+                ui_item_widget = ui_item.widget()
+                if ui_item_widget is not None:
+                    ui_item_widget.setParent(None)
+
+        props_ui = {}
+        if lpui.get("df") is not None:
+            for idx, prop in enumerate(lpui["df"].columns):
+                self.sp_layout.addWidget(QLabel(prop, self), idx, 0)
+                if lpui.get("props_ui").get(prop) is not None:
+                    prop_checkbox = lpui.get("props_ui").get(prop)
+                else:
+                    prop_checkbox = QCheckBox()
+                    prop_checkbox.setChecked(True)
+                    prop_checkbox.toggled.connect(self._update_table)
+                prop_checkbox.setVisible(True)
+                self.sp_layout.addWidget(prop_checkbox, idx, 1)
+                props_ui[prop] = prop_checkbox
+
+        self.state[self.selected_layer]["props_ui"] = props_ui
+
+    def _sort_changed(self):
+        if not isinstance(self.selected_layer, napari.layers.Labels):
             return
 
-        # 2D case
-        axes = list(self.viewer.dims.displayed)
+        self.state[self.selected_layer]["sort_by"] = self.sort_by_cb.currentText()
+        self._update_table()
 
-        # 3D case
-        if self.selected_labels_layer.data.ndim == 3:
-            axes.insert(
-                0,
-                list(set([0, 1, 2]) - set(list(self.viewer.dims.displayed)))[
-                    0
-                ],
-            )
+    def _ascending_changed(self):
+        if not isinstance(self.selected_layer, napari.layers.Labels):
+            return
 
-        # 4D case (not used yet)
-        elif self.selected_labels_layer.data.ndim == 4:
-            xxx = set(self.viewer.dims.displayed)
-            to_add = list(set([0, 1, 2, 3]) - xxx)
-            axes = to_add + axes
+        self.state[self.selected_layer]["ascending"] = self.sort_ascending.isChecked()
+        self._update_table()
 
-        return axes
+    def _update_table(self):
+        lpui = self.state[self.selected_layer]
+        _sync_table_with_context(self.table, lpui)
 
     def _clicked_table(self):
-        if self.selected_labels_layer is None:
-            return
-        
-        self.handle_selected_table_label_changed(self.df["label"].values[self._table.currentRow()])
-
-    def handle_selected_table_label_changed(self, selected_table_label):
-
-        if not selected_table_label in self.df['label'].unique():
-            print(f"Label {selected_table_label} is not present.")
+        if self.selected_layer is None:
             return
 
-        self.selected_labels_layer.selected_label = selected_table_label
+        lpui = self.state[self.selected_layer]
 
-        sub_df = self.df[self.df['label'] == selected_table_label]
-
-        x0 = int(sub_df['bbox-0'].values[0])
-        x1 = int(sub_df['bbox-3'].values[0])
-        y0 = int(sub_df['bbox-1'].values[0])
-        y1 = int(sub_df['bbox-4'].values[0])
-        z0 = int(sub_df['bbox-2'].values[0])
-        z1 = int(sub_df['bbox-5'].values[0])
-
-        label_size = max(x1 - x0, y1 - y0, z1 - z0)
-
-        centers = np.array([(x1 + x0) / 2, (y1 + y0) / 2, (z1 + z0) / 2])
-
-        # Note - there is probably something easier to set up with viewer.camera.calculate_nd_view_direction()
-        if self.viewer.dims.ndisplay == 3:
-            self.viewer.camera.center = (0.0, centers[1], centers[2])
-            self.viewer.camera.angles = (0.0, 0.0, 90.0)
-        else:
-            current_center = np.array(self.viewer.camera.center)
-
-            if len(self.axes) == 2:
-                current_center[1] = centers[1:][self.axes][0]
-                current_center[2] = centers[1:][self.axes][1]
-            elif len(self.axes) == 3:
-                current_center[1] = centers[self.axes[1]]
-                current_center[2] = centers[self.axes[2]]
-                # In 3D, also adjust the current step
-                current_step = np.array(self.viewer.dims.current_step)[
-                    self.axes
-                ]
-                current_step[self.axes[0]] = int(centers[self.axes[0]])
-                self.viewer.dims.current_step = tuple(current_step)
-
-            elif len(self.axes) == 4:
-                # TODO - This is very experimental (probably not working when layers are transposed)
-                current_center[1] = centers[self.axes[2]-1]
-                current_center[2] = centers[self.axes[3]-1]
-                current_step = np.array(self.viewer.dims.current_step)[
-                    self.axes
-                ]
-                current_step[self.axes[1]] = int(centers[self.axes[1]-1])
-                self.viewer.dims.current_step = tuple(current_step)
-
-            self.viewer.camera.center = tuple(current_center)
-
-        self.viewer.camera.zoom = max(3 - label_size * 0.005, 1.0)
-
-    def updated_content_2D_or_3D(self, labels):
-        """Compute volumes and update the table UI in the 2D and 3D cases."""
-        properties = skimage.measure.regionprops_table(
-            labels, properties=["label", "area", "bbox"]
-        )
-        self.df = pd.DataFrame.from_dict(properties)
-        self.df.rename(columns={"area": "volume"}, inplace=True)
-        self.df.sort_values(by="volume", ascending=False, inplace=True)
-
-        # Regenerate the table UI
-        self._table.clear()
-        self._table.setRowCount(len(self.df))
-        self._table.setHorizontalHeaderItem(0, QTableWidgetItem("label"))
-        self._table.setHorizontalHeaderItem(1, QTableWidgetItem("volume"))
-
-        k = 0
-        for _, (lab, vol) in self.df[["label", "volume"]].iterrows():
-            self._table.setItem(k, 0, QTableWidgetItem(str(lab)))
-            self._table.setItem(k, 1, QTableWidgetItem(str(vol)))
-            k += 1
-
-    def handle_time_axis_changed(self, event):
-        current_time = event.value[0]
-        if (current_time != self.current_time) | (self.current_time is None):
-            self.current_time = current_time
-            current_selected_label = self.selected_labels_layer.selected_label
-            self.update_table_content()
-            if self.follow_objects_checkbox.isChecked():
-                self.handle_selected_table_label_changed(current_selected_label)
-
-    def update_table_content(self):
-        if not isinstance(self.selected_labels_layer, napari.layers.Labels):
-            self._table.clear()
-            self._table.setRowCount(1)
-            self._table.setColumnWidth(0, 30)
-            self._table.setColumnWidth(1, 120)
-            self._table.setHorizontalHeaderItem(0, QTableWidgetItem("label"))
-            self._table.setHorizontalHeaderItem(1, QTableWidgetItem("volume"))
-            return
-
-        labels = self.selected_labels_layer.data
-
-        if len(labels.shape) == 2:
-            labels = labels[None]  # Add an extra dimension in the 2D case
-
-        elif len(labels.shape) == 4:
-            labels = labels[self.viewer.dims.current_step[0]]
-
-        if labels.sum() == 0:
-            return
-
-        self.updated_content_2D_or_3D(labels)
-
-    def _save_csv(self):
-        if self.df is None:
-            return
-        
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save as CSV", ".", "*.csv"
+        selection_context = SelectionContext(
+            viewer=self.viewer,
+            selected_layer=self.selected_layer,
+            selected_table_idx=self.table.currentRow(),
+            features_table=lpui.get("df"),
         )
 
-        pd.DataFrame(self.df[['label', 'volume']]).to_csv(filename)
+        for func in self.trigger_fnct:
+            func(selection_context)

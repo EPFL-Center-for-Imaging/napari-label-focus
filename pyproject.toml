@@ -23,6 +23,7 @@ dependencies = [
     "numpy",
     "pandas",
     "scikit-image",
+    "napari-toolkit",
 ]
 
 [project.entry-points."napari.manifest"]
