@@ -24,6 +24,7 @@ dependencies = [
     "pandas",
     "scikit-image",
     "napari-toolkit",
+    "matplotlib",
 ]
 
 [project.entry-points."napari.manifest"]

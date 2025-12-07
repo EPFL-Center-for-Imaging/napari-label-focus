@@ -1,5 +1,5 @@
 name: napari-label-focus
-display_name: Configurable Features Table
+display_name: Features Table
 contributions:
   commands:
     - id: napari-label-focus.table

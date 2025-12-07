@@ -1,9 +1,11 @@
+from collections import defaultdict
 from typing import Callable, Dict, List, Optional
 
 import napari
 import napari.layers
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from napari.utils.notifications import show_warning, show_info
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
 from qtpy.QtWidgets import (
@@ -21,6 +23,25 @@ from qtpy.QtWidgets import (
 from napari_label_focus._context import SelectionContext
 from napari_label_focus._events import default_table_click_event
 from napari_label_focus._featurizers import default_featurizer
+
+
+def _color_labels_layer_by_values(layer: napari.layers.Labels, features_df: pd.DataFrame, color_by: str):
+    from napari.utils import DirectLabelColormap
+
+    plot_vals = features_df[color_by].values
+    relative_vals = (plot_vals - plot_vals.min()) / plot_vals.max()  # [0-1]
+    
+    cmap = plt.get_cmap("inferno")
+    rgba = cmap(relative_vals)
+    
+    color_dict = defaultdict(lambda: np.zeros(4))
+    for lab, color in zip(features_df["label"].values, rgba):
+        color_dict[lab] = color
+
+    layer.events.selected_label.block()
+    layer.colormap = DirectLabelColormap(color_dict=color_dict)
+    layer.events.selected_label.unblock()
+    layer.refresh()
 
 
 def _sync_table_ui_with_selection_meta(
@@ -184,14 +205,14 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         self.setLayout(QGridLayout())
 
-        ### Table click events ###
+        ### Configurable table click events ###
         self.table_click_callbacks = [default_table_click_event]
         if table_click_callbacks is not None:
             for func in table_click_callbacks:
                 self.table_click_callbacks.append(func)
         ### ------------------ ###
 
-        ### Featurizers ###
+        ### Configurable featurizer functions ###
         self.featurizers = []
         if featurizers is not None:
             for func in featurizers:
@@ -208,23 +229,29 @@ class ConfigurableFeaturesTableWidget(QWidget):
         self.sort_ascending.setChecked(True)
         self.sort_ascending.toggled.connect(self._ascending_changed)
         self.layout().addWidget(self.sort_ascending, 0, 3)
+        
+        # `Color by` = Hue of the selected labels layer
+        self.layout().addWidget(QLabel("Color by", self), 1, 0)
+        self.color_by_cb = QComboBox()
+        self.layout().addWidget(self.color_by_cb, 1, 1)
+        self.color_by_cb.currentTextChanged.connect(self._color_changed)
 
         # Show properties
         self.show_props_gb = QCollapsibleGroupBox("Show properties")
         self.show_props_gb.setChecked(False)
         self.sp_layout = QGridLayout(self.show_props_gb)
-        self.layout().addWidget(self.show_props_gb, 1, 0, 1, 4)
+        self.layout().addWidget(self.show_props_gb, 2, 0, 1, 4)
 
         # Table
         self.table = _reset_table(QTableWidget())
         self.table.clicked.connect(self._clicked_table)
         # TODO: Create an expansible layout for the table...
-        self.layout().addWidget(self.table, 2, 0, 1, 4)
+        self.layout().addWidget(self.table, 3, 0, 1, 4)
         
         # Save as CSV button
         save_button = QPushButton("Save as CSV")
         save_button.clicked.connect(self._save_csv)
-        self.layout().addWidget(save_button, 3, 0, 1, 4)
+        self.layout().addWidget(save_button, 4, 0, 1, 4)
 
         # Layer events
         self.viewer.layers.selection.events.changed.connect(
@@ -240,6 +267,7 @@ class ConfigurableFeaturesTableWidget(QWidget):
         self.state[self.selected_layer] = {
             "props_ui": {},
             "sort_by": None,
+            "color_by": None,
             "ascending": self.sort_ascending.isChecked(),
             "df": None,
         }
@@ -304,6 +332,9 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         # Update sort dropdown
         self._update_sort_cb(selection_meta)
+        
+        # Update color dropdown
+        self._update_color_cb(selection_meta)
 
         # Update ascending state
         self._update_ascending_checkbox(selection_meta)
@@ -325,6 +356,15 @@ class ConfigurableFeaturesTableWidget(QWidget):
             for col_idx, col in enumerate(selection_meta["df"].columns):
                 if col == selection_meta["sort_by"]:
                     self.sort_by_cb.setCurrentIndex(col_idx)
+    
+    def _update_color_cb(self, selection_meta):
+        self.color_by_cb.clear()
+        if selection_meta.get("df") is not None:
+            self.color_by_cb.addItems(selection_meta["df"].columns)
+        if selection_meta.get("color_by") is not None:
+            for col_idx, col in enumerate(selection_meta["df"].columns):
+                if col == selection_meta["color_by"]:
+                    self.color_by_cb.setCurrentIndex(col_idx)
 
     def _update_visible_props_layout(self, selection_meta):
         # Clear the existing props layout
@@ -368,6 +408,18 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         self.state[self.selected_layer]["ascending"] = self.sort_ascending.isChecked()
         self._update_table_layout()
+
+    def _color_changed(self):
+        if not isinstance(self.selected_layer, napari.layers.Labels):
+            return
+        
+        color_by = self.color_by_cb.currentText()
+        self.state[self.selected_layer]["color_by"] = color_by
+        
+        selection_meta = self.state[self.selected_layer]
+        df = selection_meta.get("df")
+        if df is not None:
+            _color_labels_layer_by_values(self.selected_layer, df, color_by)
 
     def _update_table_layout(self):
         selection_meta = self.state[self.selected_layer]
