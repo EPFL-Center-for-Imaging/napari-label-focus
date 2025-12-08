@@ -37,6 +37,7 @@ if __name__ == "__main__":
     from napari_label_focus import ConfigurableFeaturesTableWidget
     viewer = napari.Viewer()
     widget = ConfigurableFeaturesTableWidget(viewer, featurizers=[area_featurizer])
+    viewer.window.add_dock_widget(widget)
     napari.run()
 ```
 
@@ -62,6 +63,7 @@ if __name__ == "__main__":
     from napari_label_focus import ConfigurableFeaturesTableWidget
     viewer = napari.Viewer()
     widget = ConfigurableFeaturesTableWidget(viewer, table_click_callbacks=[print_selection_context])
+    viewer.window.add_dock_widget(widget)
     napari.run()
 ```
 
