@@ -1,6 +1,8 @@
 ![EPFL Center for Imaging logo](https://imaging.epfl.ch/resources/logo-for-gitlab.svg)
 # Configurable Features Table for Napari
 
+[demo.webm](https://github.com/user-attachments/assets/d44aa86c-7976-4240-91bd-ca194762d038)
+
 This is an extended version of Napari's built-in [features table widget](https://napari.org/0.6.3/gallery/features_table_widget.html), with extra options to:
 
 - Sort table values
