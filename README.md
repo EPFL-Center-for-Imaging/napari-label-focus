@@ -1,22 +1,69 @@
 ![EPFL Center for Imaging logo](https://imaging.epfl.ch/resources/logo-for-gitlab.svg)
-# napari-label-focus
+# Configurable Features Table for Napari
 
-Easily focus the view on selected elements from a **Labels** layer to inspect them.
+This is an extended version of Napari's built-in [features table widget](https://napari.org/0.6.3/gallery/features_table_widget.html), with extra options to:
 
-- The plugin works on 2D, 2D+time, 3D, and 4D images.
-- The table shows the label index and volume (number of pixels) of each label.
-- Click on the table rows to focus the view on the corresponding label.
-- The table is updated when layers are added or removed from the viewer, selected from the dropdown, and when their data is modified.
-- The table is sorted by volume (biggest object on top).
-- You can save the table as a CSV file.
+- Sort table values
+- Display a subset of table columns
+- Colorize `Labels` based on feature values
 
-<p align="center">
-    <img src="assets/gif01.gif" height="400">
-</p>
+The table is essentially a graphical view of the `features` attribute of a layer.
 
-----------------------------------
+The table is optimized for usage with **2D and 3D `Labels` layers**. It can probably be used to display features from other layer types as well, but this hasn't been tested.
 
-This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.
+## Displaying the table
+
+The table displays features from the **currently selected layer** in the layers list. It will automatically update when the layer selection changes. If multiple layers are selected, only features from the first selected layer will be displayed.
+
+## Computing custom features
+
+By default, the table displays a `label` column for the selected `Labels` layer, along with any pre-existing features that can be matched with the `label` column (they should be in Pandas DataFrame format with at least a 'label' column).
+
+It is possible to **compute features automatically** when a new Labels layer is selected, based on a provided featurizer function. Featurizer functions will receive as input the labels layer data as a Numpy array, and should return a Pandas DataFrame with at least a `label` column, along with any other feature columns.
+
+For example, the following code extends the behaviour of the table to compute and display the `area` (or volume) of a labels layer:
+
+```python
+import pandas as pd
+from skimage.measure import regionprops_table
+
+def area_featurizer(labels: np.ndarray) -> pd.DataFrame:
+    return pd.DataFrame(regionprops_table(labels, properties=["label", "area"]))
+
+if __name__ == "__main__":
+    import napari
+    from napari_label_focus import ConfigurableFeaturesTableWidget
+    viewer = napari.Viewer()
+    widget = ConfigurableFeaturesTableWidget(viewer, featurizers=[area_featurizer])
+    napari.run()
+```
+
+If more than one featurizer is provided, featurizers will be run one by one and the results from each will be merged into a single features DataFrame.
+
+## Controlling what clicking on a table row does
+
+By default, clicking on a table row selects the corresponding label in the `Labels` layer. This behaviour can be extended by adding callback functions to the *table_click_callbacks* parameter of the table widget. The callback functions receive a selection context object with references to the viewer, selected layer, selected table row, and the table itself.
+
+The following example illustrates how this works:
+
+```python
+from napari_label_focus._context import SelectionContext
+
+def print_selection_context(ctx: SelectionContext):
+    print(f"Napari viewer: {ctx.viewer}")
+    print(f"Selected layer: {ctx.selected_layer}")
+    print(f"Selected table row: {ctx.selected_table_idx}")
+    print(f"Features table: {ctx.features_table}")
+
+if __name__ == "__main__":
+    import napari
+    from napari_label_focus import ConfigurableFeaturesTableWidget
+    viewer = napari.Viewer()
+    widget = ConfigurableFeaturesTableWidget(viewer, table_click_callbacks=[print_selection_context])
+    napari.run()
+```
+
+In this case, the function `print_selection_context` gets called whenever users click on a table row.
 
 ## Installation
 
@@ -26,34 +73,12 @@ You can install `napari-label-focus` via [pip]:
 
 ## Contributing
 
-Contributions are very welcome. Tests can be run with [tox], please ensure
-the coverage at least stays the same before you submit a pull request.
+Contributions are very welcome.
 
 ## License
 
-Distributed under the terms of the [BSD-3] license,
-"napari-label-focus" is free and open source software
+This software is distributed under the terms of the [BSD-3](http://opensource.org/licenses/BSD-3-Clause) license.
 
 ## Issues
 
 If you encounter any problems, please file an issue along with a detailed description.
-
-----------------------------------
-
-This [napari] plugin is an output of a collaborative project between the [EPFL Center for Imaging](https://imaging.epfl.ch/) and the [De Palma Lab](https://www.epfl.ch/labs/depalma-lab/) in 2023.
-
-[napari]: https://github.com/napari/napari
-[Cookiecutter]: https://github.com/audreyr/cookiecutter
-[@napari]: https://github.com/napari
-[MIT]: http://opensource.org/licenses/MIT
-[BSD-3]: http://opensource.org/licenses/BSD-3-Clause
-[GNU GPL v3.0]: http://www.gnu.org/licenses/gpl-3.0.txt
-[GNU LGPL v3.0]: http://www.gnu.org/licenses/lgpl-3.0.txt
-[Apache Software License 2.0]: http://www.apache.org/licenses/LICENSE-2.0
-[Mozilla Public License 2.0]: https://www.mozilla.org/media/MPL/2.0/index.txt
-[cookiecutter-napari-plugin]: https://github.com/napari/cookiecutter-napari-plugin
-
-[napari]: https://github.com/napari/napari
-[tox]: https://tox.readthedocs.io/en/latest/
-[pip]: https://pypi.org/project/pip/
-[PyPI]: https://pypi.org/
