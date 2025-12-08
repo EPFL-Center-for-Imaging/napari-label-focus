@@ -1,7 +1,7 @@
 [project]
 name = "napari-label-focus"
 dynamic = ["version"]
-description = "Easily focus the view on selected elements form a Labels layer."
+description = "A configurable features table widget for Napari."
 readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
@@ -13,6 +13,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 

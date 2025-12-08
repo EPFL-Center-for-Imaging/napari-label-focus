@@ -13,6 +13,8 @@ The table is optimized for usage with **2D and 3D `Labels` layers**. It can prob
 
 ## Displaying the table
 
+Open the table from `Plugins > Features Table` in Napari.
+
 The table displays features from the **currently selected layer** in the layers list. It will automatically update when the layer selection changes. If multiple layers are selected, only features from the first selected layer will be displayed.
 
 ## Computing custom features
