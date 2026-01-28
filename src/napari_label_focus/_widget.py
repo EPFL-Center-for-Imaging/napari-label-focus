@@ -1,12 +1,11 @@
-from collections import defaultdict
 from typing import Callable, Dict, List, Optional
 
 import napari
+
 import napari.layers
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from napari.utils.notifications import show_warning, show_info
+from napari.utils.notifications import show_info
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -18,168 +17,152 @@ from qtpy.QtWidgets import (
     QWidget,
     QPushButton,
     QFileDialog,
+    QSizePolicy,
 )
 
 from napari_label_focus._context import SelectionContext
 from napari_label_focus._events import default_table_click_event
-from napari_label_focus._featurizers import default_featurizer
+from napari_label_focus._utils import (
+    color_labels_layer_by_values,
+    sanitize_layer_features,
+)
+
+from napari_label_focus._featurizer import FeaturizerWidget
 
 
-def _color_labels_layer_by_values(layer: napari.layers.Labels, features_df: pd.DataFrame, color_by: str):
-    from napari.utils import DirectLabelColormap
-
-    plot_vals = features_df[color_by].values
-    relative_vals = (plot_vals - plot_vals.min()) / plot_vals.max()  # [0-1]
-    
-    cmap = plt.get_cmap("inferno")
-    rgba = cmap(relative_vals)
-    
-    color_dict = defaultdict(lambda: np.zeros(4))
-    for lab, color in zip(features_df["label"].values, rgba):
-        color_dict[lab] = color
-
-    layer.events.selected_label.block()
-    layer.colormap = DirectLabelColormap(color_dict=color_dict)
-    layer.events.selected_label.unblock()
-    layer.refresh()
+# Selected colormaps from Matplotlib (https://matplotlib.org/stable/users/explain/colors/colormaps.html)
+# We avoid colormaps with black values as they get rendered weirdly.
+COLORMAPS = [
+    "viridis",
+    "plasma",
+    "cividis",
+    "coolwarm",
+    "jet",
+    "Reds",
+    "Greens",
+    "Blues",
+]
 
 
-def _sync_table_ui_with_selection_meta(
-    table: QTableWidget, table_ctx: Dict, selected_label: Optional[int] = None
-) -> None:
-    df = table_ctx["df"]
-    if df is None:
-        _reset_table(table)
-        return
+class PropsUIStore:
+    def __init__(self) -> None:
+        """This object is used to keep track of the selected table and labels display parameters, for each layer."""
+        # The `state` maps napari layers to selected UI values (`color by`, etc.) for these layers
+        self.state: Dict[napari.layers.Layer, Dict] = {}
 
-    sort_by = table_ctx["sort_by"]
-    ascending = table_ctx["ascending"]
-    props_ui = table_ctx["props_ui"]
+    def ensure_registered(self, layer: napari.layers.Layer) -> Dict:
+        if layer in self.state:
+            return self.state[layer]
+        else:
+            return self.register_new_layer(layer)
 
-    # Sort the dataframe
-    if sort_by in df.columns:
-        df.sort_values(by=sort_by, ascending=ascending, inplace=True)
+    def register_new_layer(self, layer: napari.layers.Layer) -> Dict:
+        default_props = {
+            "props_ui": {},
+            "sort_by": "",
+            "color_by": "",
+            "colormap": COLORMAPS[0],
+            "ascending": False,
+        }
+        self.state[layer] = default_props
+        return default_props
 
-    # Filter columns to show
-    columns_to_show = []
-    for k, v in props_ui.items():
-        if (v.isChecked()) & (k in df.columns):
-            columns_to_show.append(k)
-    df_filtered = df[columns_to_show]
+    def layer_features_df(self, layer: napari.layers.Layer) -> pd.DataFrame:
+        props = self.ensure_registered(layer)
 
-    # Update the table UI
-    table.setVisible(True)
-    table.setRowCount(len(df_filtered))
-    table.setColumnCount(len(df_filtered.columns))
-    for icol, col in enumerate(df_filtered.columns):
-        table.setHorizontalHeaderItem(icol, QTableWidgetItem(col))
-    for k, (_, row) in enumerate(df_filtered.iterrows()):
-        for i, col in enumerate(row.index):
-            val = str(row[col])
-            table.setItem(k, i, QTableWidgetItem(val))
-            # Highlight the table row with selected label
-            try:
-                val_parsed = int(float(val))
-            except ValueError:
-                # val is probably NaN
-                continue
-            if (
-                (selected_label is not None)
-                & (col == "label")
-                & (val_parsed == selected_label)
-            ):
-                table.selectRow(k)
+        features_df = sanitize_layer_features(layer)
+
+        if len(features_df.columns) > 0:
+            # Sort the dataframe
+            sort_by = props["sort_by"]
+            ascending = props["ascending"]
+            if sort_by in features_df.columns:
+                features_df.sort_values(by=sort_by, ascending=ascending, inplace=True)
+
+            # Filter columns to show
+            props_ui = props["props_ui"]
+            columns_to_show = []
+            for k, v in props_ui.items():
+                if (v.isChecked()) & (k in features_df.columns):
+                    columns_to_show.append(k)
+
+            return features_df[columns_to_show]
+        else:
+            return features_df
+
+    def get_ascending(self, layer: napari.layers.Layer) -> Optional[bool]:
+        props = self.ensure_registered(layer)
+        return props.get("ascending")
+
+    def set_ascending(self, layer: napari.layers.Layer, ascending: bool):
+        self.ensure_registered(layer)
+        self.state[layer]["ascending"] = ascending
+
+    def get_sort_by(self, layer: napari.layers.Layer) -> Optional[str]:
+        props = self.ensure_registered(layer)
+        return props.get("sort_by")
+
+    def set_sort_by(self, layer: napari.layers.Layer, sort_by: str):
+        self.ensure_registered(layer)
+        self.state[layer]["sort_by"] = sort_by
+
+    def get_color_by(self, layer: napari.layers.Layer) -> Optional[str]:
+        props = self.ensure_registered(layer)
+        return props.get("color_by")
+
+    def set_color_by(self, layer: napari.layers.Layer, color_by: str):
+        self.ensure_registered(layer)
+        self.state[layer]["color_by"] = color_by
+
+    def get_colormap(self, layer: napari.layers.Layer) -> Optional[str]:
+        props = self.ensure_registered(layer)
+        return props.get("colormap")
+
+    def set_colormap(self, layer: napari.layers.Layer, colormap: str):
+        self.ensure_registered(layer)
+        self.state[layer]["colormap"] = colormap
+
+    def get_prop_ui(self, layer: napari.layers.Layer, prop: str) -> Optional[QCheckBox]:
+        props = self.ensure_registered(layer)
+        return props["props_ui"].get(prop)
+
+    def set_prop_ui(
+        self, layer: napari.layers.Layer, prop: str, prop_checkbox: QCheckBox
+    ):
+        self.ensure_registered(layer)
+        self.state[layer]["props_ui"][prop] = prop_checkbox
+
+    def get_color_by_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
+        features_df = sanitize_layer_features(layer)
+        color_by = self.get_color_by(layer)
+        if color_by in features_df.columns:
+            for col_idx, col in enumerate(features_df.columns):
+                if col == color_by:
+                    return col_idx
+
+    def get_colormap_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
+        colormap = self.get_colormap(layer)
+        for col_idx, col in enumerate(COLORMAPS):
+            if col == colormap:
+                return col_idx
+
+    def get_sort_by_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
+        features_df = sanitize_layer_features(layer)
+        sort_by = self.get_sort_by(layer)
+        if sort_by in features_df.columns:
+            for col_idx, col in enumerate(features_df.columns):
+                if col == sort_by:
+                    return col_idx
 
 
 def _reset_table(table: QTableWidget) -> QTableWidget:
+    """Utility function to reset a QTableWidget."""
     table.clear()
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     table.setColumnCount(1)
     table.setRowCount(1)
     table.setVisible(False)
     return table
-
-
-def _merge_incoming_df(
-    df_incoming: pd.DataFrame, df_existing: pd.DataFrame
-) -> pd.DataFrame:
-    # Shared columns that are not "label"
-    shared_cols = df_incoming.columns.intersection(df_existing.columns).difference(
-        ["label"]
-    )
-
-    # Left merge to keep only label rows present in the incoming features
-    df_merged = df_incoming.merge(
-        df_existing, on="label", how="left", suffixes=("_incoming", "_existing")
-    )
-
-    # Overwrite existing values with incoming values
-    for col in shared_cols:
-        df_merged[col] = df_merged[f"{col}_incoming"]
-
-    # Drop all suffixed columns
-    cols_to_drop = [f"{col}_incoming" for col in shared_cols] + [
-        f"{col}_existing" for col in shared_cols
-    ]
-    df_merged = df_merged.drop(columns=cols_to_drop)
-    
-    return df_merged
-
-
-def _compute_features_df(
-    labels_layer: napari.layers.Labels,
-    featurizer_funcs: Optional[List[Callable[[np.ndarray], pd.DataFrame]]] = None,
-) -> Optional[pd.DataFrame]:
-    """
-    Performs checks to sanitize a labels layer and its data, then computes and updates its features table from the provided featurizer functions.
-    """
-    # Sanitize existing features
-    features = labels_layer.features
-    if not isinstance(features, (pd.DataFrame, type(None))):
-        show_warning("Existing features should be in DataFrame format (or None)")
-        return
-    if isinstance(features, pd.DataFrame):
-        if len(features) > 0:
-            if not ("label" in features.columns):
-                show_warning("Existing features have no 'label' column")
-                return
-
-    # Sanitize labels layer data
-    labels = labels_layer.data
-    if not isinstance(labels, np.ndarray):
-        show_warning("Labels data should be a Numpy array")
-        return
-
-    if labels.ndim not in [2, 3]:
-        show_warning("Labels data should be 2D or 3D")
-        return
-
-    if labels.sum() == 0:
-        show_warning("Labels data are only zero")
-        return
-
-    # Extract features from default and extra featurizers
-    features_df = default_featurizer(labels)
-    if featurizer_funcs is not None:
-        for func in featurizer_funcs:
-            features_df = _merge_incoming_df(func(labels), features_df)
-            
-
-    # Sanitize computed features
-    if not ("label" in features_df.columns):
-        show_warning("Features DataFrame should have a 'label' column")
-        return
-
-    # Merge computed features into existing ones
-    if (features is None) | (len(features) == 0):
-        df_merged = features_df
-    else:
-        df_merged = _merge_incoming_df(features_df, features)
-
-    # Update the layer features
-    labels_layer.features = df_merged
-
-    return df_merged
 
 
 class ConfigurableFeaturesTableWidget(QWidget):
@@ -189,69 +172,78 @@ class ConfigurableFeaturesTableWidget(QWidget):
         table_click_callbacks: Optional[
             List[Callable[[SelectionContext], None]]
         ] = None,
-        featurizers: Optional[List[Callable[[np.ndarray], pd.DataFrame]]] = None,
+        featurizer_functs: Optional[List[Callable[[np.ndarray], pd.DataFrame]]] = None,
     ):
         """
         Configurable features table widget for Napari.
 
-        :param table_click_events: A list of functions to call when a row in the table is clicked. Callback functions receive the selection context as input.
-        :param featurizers: A list of functions that compute features on Labels layers. Called the first time a Labels layer is selected, and when the labels data changes.
+        :param table_click_callabacks: A list of functions to call when a row in the table is clicked. Callback functions receive the selection context as input.
+        :param featurizer_functs: A list of functions that compute features on Labels layers. Called the first time a Labels layer is selected, and when the labels data changes.
         """
         super().__init__()
         self.viewer = napari_viewer
 
-        self.selected_layer: Optional[napari.layers.Layer] = None
-        self.state = {}
+        # The "Featurizer widget" has no layout of itself, but it connects viewer events and manages recomputing features.
+        featurizer_widget = FeaturizerWidget(
+            napari_viewer=napari_viewer,
+            featurizer_functs=featurizer_functs,
+        )
 
-        self.setLayout(QGridLayout())
+        # The "Props UI store" stores and allows to retreive display choices for all napari layers
+        self.props_ui_store = PropsUIStore()
+
+        # Keep track of the selected layer
+        self.selected_layer = None
 
         ### Configurable table click events ###
         self.table_click_callbacks = [default_table_click_event]
         if table_click_callbacks is not None:
-            for func in table_click_callbacks:
-                self.table_click_callbacks.append(func)
-        ### ------------------ ###
+            self.table_click_callbacks.extend(table_click_callbacks)  # type: ignore
 
-        ### Configurable featurizer functions ###
-        self.featurizers = []
-        if featurizers is not None:
-            for func in featurizers:
-                self.featurizers.append(func)
-        ### ------------------ ###
+        # Create the layout
+        self.setLayout(QGridLayout())
 
         # Sort table
-        self.layout().addWidget(QLabel("Sort by", self), 0, 0)
+        self.layout().addWidget(QLabel("Sort by", self), 0, 0)  # type: ignore
         self.sort_by_cb = QComboBox()
-        self.layout().addWidget(self.sort_by_cb, 0, 1)
+        self.layout().addWidget(self.sort_by_cb, 0, 1)  # type: ignore
         self.sort_by_cb.currentTextChanged.connect(self._sort_changed)
-        self.layout().addWidget(QLabel("Ascending", self), 0, 2)
+        self.layout().addWidget(QLabel("Ascending", self), 0, 2)  # type: ignore
         self.sort_ascending = QCheckBox()
-        self.sort_ascending.setChecked(True)
+        self.sort_ascending.setChecked(False)
         self.sort_ascending.toggled.connect(self._ascending_changed)
-        self.layout().addWidget(self.sort_ascending, 0, 3)
-        
+        self.layout().addWidget(self.sort_ascending, 0, 3)  # type: ignore
+
         # `Color by` = Hue of the selected labels layer
-        self.layout().addWidget(QLabel("Color by", self), 1, 0)
+        self.layout().addWidget(QLabel("Color by", self), 1, 0)  # type: ignore
         self.color_by_cb = QComboBox()
-        self.layout().addWidget(self.color_by_cb, 1, 1)
+        self.layout().addWidget(self.color_by_cb, 1, 1)  # type: ignore
         self.color_by_cb.currentTextChanged.connect(self._color_changed)
 
+        # Colormap selection
+        self.layout().addWidget(QLabel("Colormap", self), 1, 2)  # type: ignore
+        self.colormap_cb = QComboBox()
+        self.colormap_cb.addItems(COLORMAPS)
+        self.layout().addWidget(self.colormap_cb, 1, 3)  # type: ignore
+        self.colormap_cb.currentTextChanged.connect(self._colormap_changed)
+
         # Show properties
-        self.show_props_gb = QCollapsibleGroupBox("Show properties")
+        self.show_props_gb = QCollapsibleGroupBox("Show properties")  # type: ignore
         self.show_props_gb.setChecked(False)
         self.sp_layout = QGridLayout(self.show_props_gb)
-        self.layout().addWidget(self.show_props_gb, 2, 0, 1, 4)
+        self.layout().addWidget(self.show_props_gb, 2, 0, 1, 4)  # type: ignore
 
         # Table
         self.table = _reset_table(QTableWidget())
-        self.table.clicked.connect(self._clicked_table)
-        # TODO: Create an expansible layout for the table...
-        self.layout().addWidget(self.table, 3, 0, 1, 4)
-        
+        self.table.clicked.connect(self._table_clicked)
+        # TODO: Make the table expansible
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.layout().addWidget(self.table, 3, 0, 1, 4)  # type: ignore
+
         # Save as CSV button
         save_button = QPushButton("Save as CSV")
         save_button.clicked.connect(self._save_csv)
-        self.layout().addWidget(save_button, 4, 0, 1, 4)
+        self.layout().addWidget(save_button, 4, 0, 1, 4)  # type: ignore
 
         # Layer events
         self.viewer.layers.selection.events.changed.connect(
@@ -262,111 +254,115 @@ class ConfigurableFeaturesTableWidget(QWidget):
         )
         self._layer_selection_changed(None)
 
-    def _initialize_new_selected_layer(self, selected_layer: napari.layers.Layer):
-        # Register the new layer to the `state` (seen layers)
-        self.state[self.selected_layer] = {
-            "props_ui": {},
-            "sort_by": None,
-            "color_by": None,
-            "ascending": self.sort_ascending.isChecked(),
-            "df": None,
-        }
+    def _save_csv(self, e):
+        layer = self.selected_layer
+        if layer is not None:
+            df = self.props_ui_store.layer_features_df(layer)
+            if df is not None:
+                filename, _ = QFileDialog.getSaveFileName(
+                    self, "Save as CSV", ".", "*.csv"
+                )
+                df.to_csv(filename)
+                show_info(f"Saved: {filename}")
+
+    ### Callbacks that lead to updating the table UI (layer selection change, features change, selected label change) ###
+
+    def _layer_selection_changed(self, event):
+        if event is None:
+            layer = self.viewer.layers.selection.active
+        else:
+            layer = event.source.active
 
         if isinstance(self.selected_layer, napari.layers.Labels):
-            self.selected_layer.events.paint.disconnect(self._update_labels_df)
-            self.selected_layer.events.data.disconnect(self._update_labels_df)
-            # self.selected_layer.events.features.disconnect(self._update_labels_df)
+            # Features changed or label changed *while the layer is selected* should update the UI
+            self.selected_layer.events.features.disconnect(self._features_changed)
             self.selected_layer.events.selected_label.disconnect(
                 self._selected_label_changed
             )
 
-        if isinstance(selected_layer, napari.layers.Labels):
-            selected_layer.events.data.connect(self._update_labels_df)
-            selected_layer.events.paint.connect(self._update_labels_df)
-            # selected_layer.events.features.connect(self._update_labels_df)
-            selected_layer.events.selected_label.connect(self._selected_label_changed)
+        if isinstance(layer, napari.layers.Labels):
+            layer.events.features.connect(self._features_changed)
+            layer.events.selected_label.connect(self._selected_label_changed)
 
-    def _save_csv(self, e):
-        selection_meta = self.state[self.selected_layer]
-        df = selection_meta.get("df")
-        if df is None:
-            return
-        filename, _ = QFileDialog.getSaveFileName(self, "Save as CSV", ".", "*.csv")
-        df.to_csv(filename)
-        show_info(f"Saved: {filename}")
-    
+        self.selected_layer = layer
+
+        self.update_table_ui(layer)
+
     def _selected_label_changed(self, event):
         layer = event.sources[0]
-        if isinstance(layer, napari.layers.Labels):
-            selection_meta = self.state[self.selected_layer]
-            _sync_table_ui_with_selection_meta(
-                self.table, selection_meta, selected_label=layer.selected_label
-            )
+        if not isinstance(layer, napari.layers.Labels):
+            return
+        self._update_table_layout(layer)
 
-    def _layer_selection_changed(self, event):
-        if event is None:
-            selected_layer = self.viewer.layers.selection.active
-        else:
-            selected_layer = event.source.active
+    def _features_changed(self, event):
+        layer = event.sources[0]
+        if not isinstance(layer, napari.layers.Labels):
+            return
+        self.update_table_ui(layer)
 
-        self.selected_layer = selected_layer
+    ### UPDATE TABLE UI => Fills values for all display parameter comboboxes, etc. + redraws the table ###
 
-        if self.selected_layer in self.state:
-            # Skip recomputing the features
-            self.update_table_ui()
-        else:
-            self._initialize_new_selected_layer(selected_layer)
-            self._update_labels_df()
-
-    def _update_labels_df(self):
-        if isinstance(self.selected_layer, napari.layers.Labels):
-            self.state[self.selected_layer]["df"] = _compute_features_df(
-                labels_layer=self.selected_layer,
-                featurizer_funcs=self.featurizers,
-            )
-        self.update_table_ui()
-
-    def update_table_ui(self) -> None:
-        # Get the layer's associated data from the `state`
-        selection_meta = self.state[self.selected_layer]
+    def update_table_ui(self, layer: Optional[napari.layers.Layer]) -> None:
+        if layer is None:
+            return
 
         # Update sort dropdown
-        self._update_sort_cb(selection_meta)
-        
+        self._update_sort_cb(layer)
+
         # Update color dropdown
-        self._update_color_cb(selection_meta)
+        self._update_color_cb(layer)
+
+        # Update colormap dropdown
+        self._update_colormap_cb(layer)
 
         # Update ascending state
-        self._update_ascending_checkbox(selection_meta)
+        self._update_ascending_checkbox(layer)
 
         # Update visible properties
-        self._update_visible_props_layout(selection_meta)
+        self._update_visible_props_layout(layer)
 
         # Sort and update table
-        self._update_table_layout()
+        self._update_table_layout(layer)
 
-    def _update_ascending_checkbox(self, selection_meta):
-        self.sort_ascending.setChecked(selection_meta["ascending"])
+    ### Events triggered by "update table UI" (update sort, color by comboboxes, etc.) ###
 
-    def _update_sort_cb(self, selection_meta):
+    def _update_sort_cb(self, layer: napari.layers.Layer):
+        col_idx = self.props_ui_store.get_sort_by_col_idx(layer)
+
         self.sort_by_cb.clear()
-        if selection_meta.get("df") is not None:
-            self.sort_by_cb.addItems(selection_meta["df"].columns)
-        if selection_meta.get("sort_by") is not None:
-            for col_idx, col in enumerate(selection_meta["df"].columns):
-                if col == selection_meta["sort_by"]:
-                    self.sort_by_cb.setCurrentIndex(col_idx)
-    
-    def _update_color_cb(self, selection_meta):
-        self.color_by_cb.clear()
-        if selection_meta.get("df") is not None:
-            self.color_by_cb.addItems(selection_meta["df"].columns)
-        if selection_meta.get("color_by") is not None:
-            for col_idx, col in enumerate(selection_meta["df"].columns):
-                if col == selection_meta["color_by"]:
-                    self.color_by_cb.setCurrentIndex(col_idx)
 
-    def _update_visible_props_layout(self, selection_meta):
+        df_features = sanitize_layer_features(layer)
+
+        if len(df_features.columns) > 0:
+            self.sort_by_cb.addItems(df_features.columns)
+
+        if col_idx:
+            self.sort_by_cb.setCurrentIndex(col_idx)
+
+    def _update_color_cb(self, layer: napari.layers.Layer):
+        col_idx = self.props_ui_store.get_color_by_col_idx(layer)
+
+        self.color_by_cb.clear()
+
+        df_features = sanitize_layer_features(layer)
+
+        if len(df_features.columns) > 0:
+            self.color_by_cb.addItems(df_features.columns)
+
+        if col_idx is not None:
+            self.color_by_cb.setCurrentIndex(col_idx)
+
+    def _update_colormap_cb(self, layer: napari.layers.Layer):
+        colormap_idx = self.props_ui_store.get_colormap_col_idx(layer)
+        if colormap_idx is not None:
+            self.colormap_cb.setCurrentIndex(colormap_idx)
+
+    def _update_ascending_checkbox(self, layer: napari.layers.Layer):
+        ascending = self.props_ui_store.get_ascending(layer)
+        if ascending:
+            self.sort_ascending.setChecked(ascending)
+
+    def _update_visible_props_layout(self, layer: napari.layers.Layer):
         # Clear the existing props layout
         for i in reversed(range(self.sp_layout.count())):
             ui_item = self.sp_layout.itemAt(i)
@@ -375,67 +371,145 @@ class ConfigurableFeaturesTableWidget(QWidget):
                 if ui_item_widget is not None:
                     ui_item_widget.setParent(None)
 
+        df_features = sanitize_layer_features(layer)
+
         # Populate the props layout
-        visible_props_ui = {}
-        if selection_meta.get("df") is not None:
-            for idx, prop in enumerate(selection_meta["df"].columns):
+        if len(df_features.columns) > 0:
+            for idx, prop in enumerate(df_features.columns):
                 self.sp_layout.addWidget(QLabel(prop, self), idx, 0)
-                if selection_meta.get("props_ui").get(prop) is not None:
-                    # Reuse the existing checkbox component
-                    prop_checkbox = selection_meta.get("props_ui").get(prop)
-                else:
+
+                prop_checkbox = self.props_ui_store.get_prop_ui(layer, prop)
+
+                if prop_checkbox is None:
                     # Initialize a new checkbox component
                     prop_checkbox = QCheckBox()
                     prop_checkbox.setChecked(True)
-                    prop_checkbox.toggled.connect(self._update_table_layout)
+                    prop_checkbox.toggled.connect(self._prop_checkbox_toggled)
                 prop_checkbox.setVisible(True)
-                self.sp_layout.addWidget(prop_checkbox, idx, 1)
-                visible_props_ui[prop] = prop_checkbox
 
-        # Update the selection meta
-        self.state[self.selected_layer]["props_ui"] = visible_props_ui
+                self.sp_layout.addWidget(prop_checkbox, idx, 1)
+
+                self.props_ui_store.set_prop_ui(layer, prop, prop_checkbox)
+
+    ### Update table layout ###
+
+    def _update_table_layout(self, layer: napari.layers.Layer):
+        df_filtered = self.props_ui_store.layer_features_df(layer)
+
+        n_rows = len(df_filtered)
+        n_cols = len(df_filtered.columns)
+
+        # Update the table UI
+        self.table.setVisible(True)
+        self.table.setRowCount(n_rows)
+        self.table.setColumnCount(n_cols)
+        for icol, col in enumerate(df_filtered.columns):
+            self.table.setHorizontalHeaderItem(icol, QTableWidgetItem(col))
+
+        # Fill the Qtable with dataframe values
+        for i, col in enumerate(df_filtered.columns):
+            vals = df_filtered[col].values
+            for k, val in enumerate(vals):
+                self.table.setItem(k, i, QTableWidgetItem(str(val)))
+
+        if isinstance(layer, napari.layers.Labels):
+            if "label" in df_filtered.columns:
+                selected_label = layer.selected_label
+                # Select the table row if specified
+                if selected_label is not None:
+                    for k, val in enumerate(df_filtered["label"].values):
+                        if val == selected_label:
+                            self.table.selectRow(k)
+
+    ### Callbacks that trigger update table layout (sort changes, ascending changes, etc.) ###
+
+    def _prop_checkbox_toggled(self):
+        if not isinstance(self.selected_layer, napari.layers.Labels):
+            return
+
+        self._update_table_layout(self.selected_layer)
 
     def _sort_changed(self):
         if not isinstance(self.selected_layer, napari.layers.Labels):
             return
 
-        self.state[self.selected_layer]["sort_by"] = self.sort_by_cb.currentText()
-        self._update_table_layout()
+        sort_by = self.sort_by_cb.currentText()
+        if sort_by == "":
+            return
+
+        self.props_ui_store.set_sort_by(self.selected_layer, sort_by)
+        self._update_table_layout(self.selected_layer)
 
     def _ascending_changed(self):
         if not isinstance(self.selected_layer, napari.layers.Labels):
             return
 
-        self.state[self.selected_layer]["ascending"] = self.sort_ascending.isChecked()
-        self._update_table_layout()
+        ascending = self.sort_ascending.isChecked()
+        self.props_ui_store.set_ascending(self.selected_layer, ascending)
+        self._update_table_layout(self.selected_layer)
+
+    ### Callbacks that trigger a color change in the Labels layer ###
 
     def _color_changed(self):
         if not isinstance(self.selected_layer, napari.layers.Labels):
             return
-        
+
         color_by = self.color_by_cb.currentText()
-        self.state[self.selected_layer]["color_by"] = color_by
-        
-        selection_meta = self.state[self.selected_layer]
-        df = selection_meta.get("df")
-        if df is not None:
-            _color_labels_layer_by_values(self.selected_layer, df, color_by)
+        if color_by == "":
+            return
 
-    def _update_table_layout(self):
-        selection_meta = self.state[self.selected_layer]
-        _sync_table_ui_with_selection_meta(self.table, selection_meta)
+        colormap = self.props_ui_store.get_colormap(self.selected_layer)
+        if (colormap is None) or (colormap == ""):
+            return
 
-    def _clicked_table(self):
+        self.props_ui_store.set_color_by(self.selected_layer, color_by)
+
+        color_labels_layer_by_values(
+            self.selected_layer,
+            self.selected_layer.features,
+            color_by,
+            colormap=colormap,
+        )
+
+    def _colormap_changed(self):
+        if not isinstance(self.selected_layer, napari.layers.Labels):
+            return
+
+        color_by = self.props_ui_store.get_color_by(self.selected_layer)
+        if (color_by is None) or (color_by == ""):
+            return
+
+        colormap = self.colormap_cb.currentText()
+        if colormap == "":
+            return
+
+        self.props_ui_store.set_colormap(self.selected_layer, colormap)
+
+        color_labels_layer_by_values(
+            self.selected_layer,
+            self.selected_layer.features,
+            color_by,
+            colormap=colormap,
+        )
+
+    ### Callback on table click (configurable) ###
+
+    def _table_clicked(self):
+        selected_table_idx = self.table.currentRow()
+
         if self.selected_layer is None:
             return
 
-        selection_meta = self.state[self.selected_layer]
+        features_df = sanitize_layer_features(self.selected_layer)
+
+        if len(features_df) == 0:
+            return
 
         selection_context = SelectionContext(
             viewer=self.viewer,
             selected_layer=self.selected_layer,
-            selected_table_idx=self.table.currentRow(),
-            features_table=selection_meta.get("df"),
+            selected_table_idx=selected_table_idx,
+            features_table=features_df,
         )
 
         for func in self.table_click_callbacks:
