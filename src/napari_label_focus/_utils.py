@@ -3,6 +3,7 @@ import napari.layers
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from skimage.color import hsv2rgb
 from napari.utils import DirectLabelColormap
 from napari.utils.notifications import show_warning
 
@@ -52,21 +53,34 @@ def color_labels_layer_by_values(
             f"Values in column {color_by} are not a NumPy array (cannot be plotted)"
         )
 
-    # Rescale values to [0-1] for colormapping
-    min_vals = np.min(plot_vals)
-    max_vals = np.max(plot_vals)
-    val_range = max_vals - min_vals
-    if val_range > 0:
-        relative_vals = (plot_vals - min_vals) / val_range
+    if colormap == "random":
+        # Special case for random (not a matplotlib colormap)
+        unique_plot_vals = np.unique(plot_vals)
+        hue = np.random.random(len(unique_plot_vals))
+        hue_map = {val: h for val, h in zip(unique_plot_vals, hue)}
+        hues = [hue_map[h] for h in plot_vals]
+        saturation = np.ones(len(plot_vals))
+        value = np.ones(len(plot_vals))
+        hsv_random = np.stack((hues, saturation, value)).T
+        rgb_random = hsv2rgb(hsv_random)
+        alphas = np.ones(len(plot_vals))
+        rgba = np.hstack((rgb_random, alphas[None].T))
     else:
-        relative_vals = (plot_vals - min_vals) + 1
-
-    # Plot in `inferno` colour
-    cmap = plt.get_cmap(colormap)
-    rgba = cmap(relative_vals)
+        # Rescale values to [0-1] for colormapping
+        min_vals = np.min(plot_vals)
+        max_vals = np.max(plot_vals)
+        val_range = max_vals - min_vals
+        if val_range > 0:
+            relative_vals = (plot_vals - min_vals) / val_range
+        else:
+            relative_vals = (plot_vals - min_vals) + 1
+        cmap = plt.get_cmap(colormap)
+        rgba = cmap(relative_vals)
 
     color_dict = defaultdict(lambda: np.zeros(4))
     for lab, color in zip(label_values, rgba):
+        if lab == 0:
+            color[-1] = 0 # Background transparent
         color_dict[lab] = color
 
     layer.events.selected_label.block()

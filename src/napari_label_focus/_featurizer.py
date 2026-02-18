@@ -3,14 +3,13 @@ from typing import Callable, List, Optional
 import napari.layers
 import numpy as np
 import pandas as pd
-import skimage.measure
 from napari.utils.notifications import show_warning
 
 from napari_label_focus._utils import sanitize_layer_features
 
 
 def default_featurizer(labels: np.ndarray) -> pd.DataFrame:
-    return pd.DataFrame(skimage.measure.regionprops_table(labels, properties=["label"]))
+    return pd.DataFrame({"label": np.unique(labels)})
 
 
 class Featurizer:
@@ -101,7 +100,7 @@ class FeaturizerWidget:
 
         # Keep track of the selected layer
         self.selected_layer = None
-        
+
         # Keep track of layers selected at least once to avoid recomputing their features on layer change
         self.seen_layers = []
 

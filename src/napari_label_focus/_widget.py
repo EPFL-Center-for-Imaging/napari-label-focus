@@ -41,6 +41,7 @@ COLORMAPS = [
     "Reds",
     "Greens",
     "Blues",
+    "random",  # Specially handled (not a matplotlib colormap)
 ]
 
 
