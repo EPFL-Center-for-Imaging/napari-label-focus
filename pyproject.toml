@@ -28,6 +28,7 @@ dependencies = [
     "scikit-image",
     "napari-toolkit",
     "matplotlib",
+    "numba",
 ]
 
 [project.entry-points."napari.manifest"]

@@ -204,29 +204,31 @@ class ConfigurableFeaturesTableWidget(QWidget):
         # Create the layout
         self.setLayout(QGridLayout())
 
-        # Sort table
-        self.layout().addWidget(QLabel("Sort by", self), 0, 0)  # type: ignore
-        self.sort_by_cb = QComboBox()
-        self.layout().addWidget(self.sort_by_cb, 0, 1)  # type: ignore
-        self.sort_by_cb.currentTextChanged.connect(self._sort_changed)
-        self.layout().addWidget(QLabel("Ascending", self), 0, 2)  # type: ignore
-        self.sort_ascending = QCheckBox()
-        self.sort_ascending.setChecked(False)
-        self.sort_ascending.toggled.connect(self._ascending_changed)
-        self.layout().addWidget(self.sort_ascending, 0, 3)  # type: ignore
-
         # `Color by` = Hue of the selected labels layer
-        self.layout().addWidget(QLabel("Color by", self), 1, 0)  # type: ignore
+        self.layout().addWidget(QLabel("Color by", self), 0, 0)  # type: ignore
         self.color_by_cb = QComboBox()
-        self.layout().addWidget(self.color_by_cb, 1, 1)  # type: ignore
+        self.layout().addWidget(self.color_by_cb, 0, 1)  # type: ignore
         self.color_by_cb.currentTextChanged.connect(self._color_changed)
 
         # Colormap selection
-        self.layout().addWidget(QLabel("Colormap", self), 1, 2)  # type: ignore
+        self.layout().addWidget(QLabel("Colormap", self), 0, 2)  # type: ignore
         self.colormap_cb = QComboBox()
         self.colormap_cb.addItems(COLORMAPS)
-        self.layout().addWidget(self.colormap_cb, 1, 3)  # type: ignore
+        self.layout().addWidget(self.colormap_cb, 0, 3)  # type: ignore
         self.colormap_cb.currentTextChanged.connect(self._colormap_changed)
+        
+        # --- Table --- #
+        
+        # Sort table
+        self.layout().addWidget(QLabel("Sort by", self), 1, 0)  # type: ignore
+        self.sort_by_cb = QComboBox()
+        self.layout().addWidget(self.sort_by_cb, 1, 1)  # type: ignore
+        self.sort_by_cb.currentTextChanged.connect(self._sort_changed)
+        self.layout().addWidget(QLabel("Ascending", self), 1, 2)  # type: ignore
+        self.sort_ascending = QCheckBox()
+        self.sort_ascending.setChecked(False)
+        self.sort_ascending.toggled.connect(self._ascending_changed)
+        self.layout().addWidget(self.sort_ascending, 1, 3)  # type: ignore
 
         # Show properties
         self.show_props_gb = QCollapsibleGroupBox("Show properties")  # type: ignore
@@ -246,6 +248,8 @@ class ConfigurableFeaturesTableWidget(QWidget):
         save_button.clicked.connect(self._save_csv)
         self.layout().addWidget(save_button, 4, 0, 1, 4)  # type: ignore
 
+        # ------------- #
+        
         # Layer events
         self.viewer.layers.selection.events.changed.connect(
             self._layer_selection_changed
@@ -254,7 +258,9 @@ class ConfigurableFeaturesTableWidget(QWidget):
             lambda e: self._layer_selection_changed(None)
         )
         self._layer_selection_changed(None)
-
+        
+        # ------------- #
+        
     def _save_csv(self, e):
         layer = self.selected_layer
         if layer is not None:
@@ -321,7 +327,7 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         # Update visible properties
         self._update_visible_props_layout(layer)
-
+        
         # Sort and update table
         self._update_table_layout(layer)
 

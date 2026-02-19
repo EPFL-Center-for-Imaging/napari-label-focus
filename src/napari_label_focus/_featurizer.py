@@ -7,9 +7,31 @@ from napari.utils.notifications import show_warning
 
 from napari_label_focus._utils import sanitize_layer_features
 
+from numba import njit
+
+
+@njit
+def _fast_counts(mask_tyx: np.ndarray):
+    """Numba-ized algorithm to find the unique values in a 3D mask."""
+    rt, ry, rx = mask_tyx.shape
+    val_set = np.arange(mask_tyx.max() + 1)
+    counts = [False] * len(val_set)
+    for t in range(rt):
+        for y in range(ry):
+            for x in range(rx):
+                val = mask_tyx[t, y, x]
+                if not counts[val]:
+                    counts[val] = True
+    return counts, val_set
+
+
+def fast_uniques(mask_tyx: np.ndarray) -> np.ndarray:
+    counts, val_set = _fast_counts(mask_tyx)
+    return val_set[counts]
+
 
 def default_featurizer(labels: np.ndarray) -> pd.DataFrame:
-    return pd.DataFrame({"label": np.unique(labels)})
+    return pd.DataFrame({"label": fast_uniques(labels)})
 
 
 class Featurizer:
@@ -17,7 +39,7 @@ class Featurizer:
         self,
         featurizer_functs: Optional[List[Callable[[np.ndarray], pd.DataFrame]]] = None,
     ) -> None:
-        self.featurizer_functs: List = [default_featurizer]
+        self.featurizer_functs: List = []
         if isinstance(featurizer_functs, List):
             self.featurizer_functs.extend(featurizer_functs)
 
@@ -110,7 +132,7 @@ class FeaturizerWidget:
             lambda e: self._selection_changed(None)
         )
         self._selection_changed(None)
-
+        
     def _selection_changed(self, event=None):
         if event is None:
             layer = self.viewer.layers.selection.active
@@ -130,10 +152,11 @@ class FeaturizerWidget:
             layer.events.paint.connect(self._recompute)
 
         self.selected_layer = layer
-
+        
         # Only compute features on selection change when the layer is seen for the first time
         if layer not in self.seen_layers:
             self.featurizer_functs.recompute_features(layer)
+        
 
     def _recompute(self, event):
         layer = event.sources[0]
