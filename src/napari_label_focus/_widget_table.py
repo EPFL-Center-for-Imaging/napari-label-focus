@@ -1,54 +1,26 @@
 from typing import Callable, Dict, List, Optional
 
 import napari
-
 import napari.layers
 import numpy as np
 import pandas as pd
 from napari.utils.notifications import show_info
 from napari_toolkit.containers.collapsible_groupbox import QCollapsibleGroupBox
-from qtpy.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QGridLayout,
-    QLabel,
-    QTableWidget,
-    QTableWidgetItem,
-    QWidget,
-    QPushButton,
-    QFileDialog,
-    QSizePolicy,
-)
+from PyQt5.QtCore import Qt
+from qtpy.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGridLayout,
+                            QLabel, QPushButton, QSizePolicy, QTableWidget,
+                            QTableWidgetItem, QWidget)
 
 from napari_label_focus._context import SelectionContext
 from napari_label_focus._events import default_table_click_event
-from napari_label_focus._utils import (
-    color_labels_layer_by_values,
-    sanitize_layer_features,
-)
-
 from napari_label_focus._featurizer import FeaturizerWidget
+from napari_label_focus._utils import sanitize_layer_features
 
 
-# Selected colormaps from Matplotlib (https://matplotlib.org/stable/users/explain/colors/colormaps.html)
-# We avoid colormaps with black values as they get rendered weirdly.
-COLORMAPS = [
-    "viridis",
-    "plasma",
-    "cividis",
-    "coolwarm",
-    "jet",
-    "Reds",
-    "Greens",
-    "Blues",
-    "random",  # Specially handled (not a matplotlib colormap)
-]
-
-
-class PropsUIStore:
+class TableUIStore:
     def __init__(self) -> None:
-        """This object is used to keep track of the selected table and labels display parameters, for each layer."""
-        # The `state` maps napari layers to selected UI values (`color by`, etc.) for these layers
+        """This object is used to keep track of the selected display parameters, for each layer."""
+        # The `state` maps napari layers to selected UI values for these layers
         self.state: Dict[napari.layers.Layer, Dict] = {}
 
     def ensure_registered(self, layer: napari.layers.Layer) -> Dict:
@@ -61,8 +33,6 @@ class PropsUIStore:
         default_props = {
             "props_ui": {},
             "sort_by": "",
-            "color_by": "",
-            "colormap": COLORMAPS[0],
             "ascending": False,
         }
         self.state[layer] = default_props
@@ -107,22 +77,6 @@ class PropsUIStore:
         self.ensure_registered(layer)
         self.state[layer]["sort_by"] = sort_by
 
-    def get_color_by(self, layer: napari.layers.Layer) -> Optional[str]:
-        props = self.ensure_registered(layer)
-        return props.get("color_by")
-
-    def set_color_by(self, layer: napari.layers.Layer, color_by: str):
-        self.ensure_registered(layer)
-        self.state[layer]["color_by"] = color_by
-
-    def get_colormap(self, layer: napari.layers.Layer) -> Optional[str]:
-        props = self.ensure_registered(layer)
-        return props.get("colormap")
-
-    def set_colormap(self, layer: napari.layers.Layer, colormap: str):
-        self.ensure_registered(layer)
-        self.state[layer]["colormap"] = colormap
-
     def get_prop_ui(self, layer: napari.layers.Layer, prop: str) -> Optional[QCheckBox]:
         props = self.ensure_registered(layer)
         return props["props_ui"].get(prop)
@@ -132,20 +86,6 @@ class PropsUIStore:
     ):
         self.ensure_registered(layer)
         self.state[layer]["props_ui"][prop] = prop_checkbox
-
-    def get_color_by_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
-        features_df = sanitize_layer_features(layer)
-        color_by = self.get_color_by(layer)
-        if color_by in features_df.columns:
-            for col_idx, col in enumerate(features_df.columns):
-                if col == color_by:
-                    return col_idx
-
-    def get_colormap_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
-        colormap = self.get_colormap(layer)
-        for col_idx, col in enumerate(COLORMAPS):
-            if col == colormap:
-                return col_idx
 
     def get_sort_by_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
         features_df = sanitize_layer_features(layer)
@@ -191,7 +131,7 @@ class ConfigurableFeaturesTableWidget(QWidget):
         )
 
         # The "Props UI store" stores and allows to retreive display choices for all napari layers
-        self.props_ui_store = PropsUIStore()
+        self.props_ui_store = TableUIStore()
 
         # Keep track of the selected layer
         self.selected_layer = None
@@ -203,21 +143,7 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         # Create the layout
         self.setLayout(QGridLayout())
-
-        # `Color by` = Hue of the selected labels layer
-        self.layout().addWidget(QLabel("Color by", self), 0, 0)  # type: ignore
-        self.color_by_cb = QComboBox()
-        self.layout().addWidget(self.color_by_cb, 0, 1)  # type: ignore
-        self.color_by_cb.currentTextChanged.connect(self._color_changed)
-
-        # Colormap selection
-        self.layout().addWidget(QLabel("Colormap", self), 0, 2)  # type: ignore
-        self.colormap_cb = QComboBox()
-        self.colormap_cb.addItems(COLORMAPS)
-        self.layout().addWidget(self.colormap_cb, 0, 3)  # type: ignore
-        self.colormap_cb.currentTextChanged.connect(self._colormap_changed)
-        
-        # --- Table --- #
+        self.layout().setAlignment(Qt.AlignTop)
         
         # Sort table
         self.layout().addWidget(QLabel("Sort by", self), 1, 0)  # type: ignore
@@ -248,8 +174,6 @@ class ConfigurableFeaturesTableWidget(QWidget):
         save_button.clicked.connect(self._save_csv)
         self.layout().addWidget(save_button, 4, 0, 1, 4)  # type: ignore
 
-        # ------------- #
-        
         # Layer events
         self.viewer.layers.selection.events.changed.connect(
             self._layer_selection_changed
@@ -258,8 +182,6 @@ class ConfigurableFeaturesTableWidget(QWidget):
             lambda e: self._layer_selection_changed(None)
         )
         self._layer_selection_changed(None)
-        
-        # ------------- #
         
     def _save_csv(self, e):
         layer = self.selected_layer
@@ -293,7 +215,7 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         self.selected_layer = layer
 
-        self.update_table_ui(layer)
+        self.update_ui(layer)
 
     def _selected_label_changed(self, event):
         layer = event.sources[0]
@@ -305,22 +227,16 @@ class ConfigurableFeaturesTableWidget(QWidget):
         layer = event.sources[0]
         if not isinstance(layer, napari.layers.Labels):
             return
-        self.update_table_ui(layer)
+        self.update_ui(layer)
 
-    ### UPDATE TABLE UI => Fills values for all display parameter comboboxes, etc. + redraws the table ###
+    ### UPDATE UI => Fills values for all display parameter comboboxes, etc. + redraws the table ###
 
-    def update_table_ui(self, layer: Optional[napari.layers.Layer]) -> None:
+    def update_ui(self, layer: Optional[napari.layers.Layer]) -> None:
         if layer is None:
             return
 
         # Update sort dropdown
         self._update_sort_cb(layer)
-
-        # Update color dropdown
-        self._update_color_cb(layer)
-
-        # Update colormap dropdown
-        self._update_colormap_cb(layer)
 
         # Update ascending state
         self._update_ascending_checkbox(layer)
@@ -331,7 +247,7 @@ class ConfigurableFeaturesTableWidget(QWidget):
         # Sort and update table
         self._update_table_layout(layer)
 
-    ### Events triggered by "update table UI" (update sort, color by comboboxes, etc.) ###
+    ### Events triggered by "update UI" ###
 
     def _update_sort_cb(self, layer: napari.layers.Layer):
         col_idx = self.props_ui_store.get_sort_by_col_idx(layer)
@@ -345,24 +261,6 @@ class ConfigurableFeaturesTableWidget(QWidget):
 
         if col_idx:
             self.sort_by_cb.setCurrentIndex(col_idx)
-
-    def _update_color_cb(self, layer: napari.layers.Layer):
-        col_idx = self.props_ui_store.get_color_by_col_idx(layer)
-
-        self.color_by_cb.clear()
-
-        df_features = sanitize_layer_features(layer)
-
-        if len(df_features.columns) > 0:
-            self.color_by_cb.addItems(df_features.columns)
-
-        if col_idx is not None:
-            self.color_by_cb.setCurrentIndex(col_idx)
-
-    def _update_colormap_cb(self, layer: napari.layers.Layer):
-        colormap_idx = self.props_ui_store.get_colormap_col_idx(layer)
-        if colormap_idx is not None:
-            self.colormap_cb.setCurrentIndex(colormap_idx)
 
     def _update_ascending_checkbox(self, layer: napari.layers.Layer):
         ascending = self.props_ui_store.get_ascending(layer)
@@ -454,50 +352,6 @@ class ConfigurableFeaturesTableWidget(QWidget):
         ascending = self.sort_ascending.isChecked()
         self.props_ui_store.set_ascending(self.selected_layer, ascending)
         self._update_table_layout(self.selected_layer)
-
-    ### Callbacks that trigger a color change in the Labels layer ###
-
-    def _color_changed(self):
-        if not isinstance(self.selected_layer, napari.layers.Labels):
-            return
-
-        color_by = self.color_by_cb.currentText()
-        if color_by == "":
-            return
-
-        colormap = self.props_ui_store.get_colormap(self.selected_layer)
-        if (colormap is None) or (colormap == ""):
-            return
-
-        self.props_ui_store.set_color_by(self.selected_layer, color_by)
-
-        color_labels_layer_by_values(
-            self.selected_layer,
-            self.selected_layer.features,
-            color_by,
-            colormap=colormap,
-        )
-
-    def _colormap_changed(self):
-        if not isinstance(self.selected_layer, napari.layers.Labels):
-            return
-
-        color_by = self.props_ui_store.get_color_by(self.selected_layer)
-        if (color_by is None) or (color_by == ""):
-            return
-
-        colormap = self.colormap_cb.currentText()
-        if colormap == "":
-            return
-
-        self.props_ui_store.set_colormap(self.selected_layer, colormap)
-
-        color_labels_layer_by_values(
-            self.selected_layer,
-            self.selected_layer.features,
-            color_by,
-            colormap=colormap,
-        )
 
     ### Callback on table click (configurable) ###
 

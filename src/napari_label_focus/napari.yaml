@@ -5,6 +5,11 @@ contributions:
     - id: napari-label-focus.table
       title: Features Table
       python_name: napari_label_focus:ConfigurableFeaturesTableWidget
+    - id: napari-label-focus.color
+      title: Features Color
+      python_name: napari_label_focus:FeaturesColorWidget
   widgets:
     - command: napari-label-focus.table
       display_name: Features Table
+    - command: napari-label-focus.color
+      display_name: Features Color
