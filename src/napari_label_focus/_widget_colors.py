@@ -40,6 +40,7 @@ class ColorUIStore:
     def register_new_layer(self, layer: napari.layers.Layer) -> Dict:
         default_props = {
             "color_by": "",
+            "alpha_by": "",
             "colormap": COLORMAPS[0],
         }
         self.state[layer] = default_props
@@ -52,6 +53,14 @@ class ColorUIStore:
     def set_color_by(self, layer: napari.layers.Layer, color_by: str):
         self.ensure_registered(layer)
         self.state[layer]["color_by"] = color_by
+        
+    def get_alpha_by(self, layer: napari.layers.Layer) -> Optional[str]:
+        props = self.ensure_registered(layer)
+        return props.get("alpha_by")
+    
+    def set_alpha_by(self, layer: napari.layers.Layer, alpha_by: str):
+        self.ensure_registered(layer)
+        self.state[layer]["alpha_by"] = alpha_by
 
     def get_colormap(self, layer: napari.layers.Layer) -> Optional[str]:
         props = self.ensure_registered(layer)
@@ -67,6 +76,14 @@ class ColorUIStore:
         if color_by in features_df.columns:
             for col_idx, col in enumerate(features_df.columns):
                 if col == color_by:
+                    return col_idx
+    
+    def get_alpha_by_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
+        features_df = sanitize_layer_features(layer)
+        alpha_by = self.get_alpha_by(layer)
+        if alpha_by in features_df.columns:
+            for col_idx, col in enumerate(features_df.columns):
+                if col == alpha_by:
                     return col_idx
 
     def get_colormap_col_idx(self, layer: napari.layers.Layer) -> Optional[int]:
@@ -119,6 +136,13 @@ class FeaturesColorWidget(QWidget):
         self.layout().addWidget(self.colormap_cb, 1, 1)  # type: ignore
         self.colormap_cb.currentTextChanged.connect(self._colormap_changed)
         
+        # Alpha (transparency)
+        self.layout().addWidget(QLabel("Transparency", self), 2, 0)  # type: ignore
+        self.alpha_by_cb = QComboBox()
+        self.alpha_by_cb.addItems([""])
+        self.layout().addWidget(self.alpha_by_cb, 2, 1)  # type: ignore
+        self.alpha_by_cb.currentTextChanged.connect(self._alpha_changed)
+        
         # Layer events
         self.viewer.layers.selection.events.changed.connect(
             self._layer_selection_changed
@@ -160,6 +184,9 @@ class FeaturesColorWidget(QWidget):
 
         # Update color dropdown
         self._update_color_cb(layer)
+        
+        # Update alpha dropdown
+        self._update_alpha_cb(layer)
 
         # Update colormap dropdown
         self._update_colormap_cb(layer)
@@ -178,6 +205,20 @@ class FeaturesColorWidget(QWidget):
 
         if col_idx is not None:
             self.color_by_cb.setCurrentIndex(col_idx)
+    
+    def _update_alpha_cb(self, layer: napari.layers.Layer):
+        col_idx = self.props_ui_store.get_alpha_by_col_idx(layer)
+
+        self.alpha_by_cb.clear()
+        self.alpha_by_cb.addItems([""])
+
+        df_features = sanitize_layer_features(layer)
+
+        if len(df_features.columns) > 0:
+            self.alpha_by_cb.addItems(df_features.columns)
+
+        if col_idx is not None:
+            self.alpha_by_cb.setCurrentIndex(col_idx)
 
     def _update_colormap_cb(self, layer: napari.layers.Layer):
         colormap_idx = self.props_ui_store.get_colormap_col_idx(layer)
@@ -191,19 +232,16 @@ class FeaturesColorWidget(QWidget):
             return
 
         color_by = self.color_by_cb.currentText()
-        if color_by == "":
-            return
-
         colormap = self.props_ui_store.get_colormap(self.selected_layer)
-        if (colormap is None) or (colormap == ""):
-            return
+        alpha_by = self.props_ui_store.get_alpha_by(self.selected_layer)
 
         self.props_ui_store.set_color_by(self.selected_layer, color_by)
 
         color_labels_layer_by_values(
             self.selected_layer,
             self.selected_layer.features,
-            color_by,
+            color_by=color_by,
+            alpha_by=alpha_by,
             colormap=colormap,
         )
 
@@ -212,18 +250,33 @@ class FeaturesColorWidget(QWidget):
             return
 
         color_by = self.props_ui_store.get_color_by(self.selected_layer)
-        if (color_by is None) or (color_by == ""):
-            return
-
         colormap = self.colormap_cb.currentText()
-        if colormap == "":
-            return
-
+        alpha_by = self.props_ui_store.get_alpha_by(self.selected_layer)
+        
         self.props_ui_store.set_colormap(self.selected_layer, colormap)
 
         color_labels_layer_by_values(
             self.selected_layer,
             self.selected_layer.features,
-            color_by,
+            color_by=color_by,
+            alpha_by=alpha_by,
+            colormap=colormap,
+        )
+
+    def _alpha_changed(self):
+        if not isinstance(self.selected_layer, napari.layers.Labels):
+            return
+
+        color_by = self.props_ui_store.get_color_by(self.selected_layer)
+        colormap = self.props_ui_store.get_colormap(self.selected_layer)
+        alpha_by = self.alpha_by_cb.currentText()
+
+        self.props_ui_store.set_alpha_by(self.selected_layer, alpha_by)
+
+        color_labels_layer_by_values(
+            self.selected_layer,
+            self.selected_layer.features,
+            color_by=color_by,
+            alpha_by=alpha_by,
             colormap=colormap,
         )

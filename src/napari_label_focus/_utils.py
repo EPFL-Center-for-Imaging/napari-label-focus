@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Optional
 import napari.layers
 import numpy as np
 import pandas as pd
@@ -26,10 +27,18 @@ def sanitize_layer_features(layer: napari.layers.Layer) -> pd.DataFrame:
 def color_labels_layer_by_values(
     layer: napari.layers.Labels,
     features_df: pd.DataFrame,
-    color_by: str,
-    colormap: str = "inferno",
+    color_by: Optional[str],
+    alpha_by: Optional[str],
+    colormap: Optional[str],
 ):
     """Colorize a napari Labels layer based on the values of a column in a features dataframe."""
+    # Sanitize color variables
+    if (color_by is None) or (color_by == ""):
+        return
+    
+    if (colormap is None) or (colormap == ""):
+        return
+    
     # Drop the NaNs
     features_df_filtered = features_df.dropna(axis=0)
     if len(features_df_filtered) == 0:
@@ -52,7 +61,24 @@ def color_labels_layer_by_values(
         raise ValueError(
             f"Values in column {color_by} are not a NumPy array (cannot be plotted)"
         )
-
+    
+    # Alpha values
+    if alpha_by == "":
+        relative_alpha_vals = np.ones_like(plot_vals)  # Default to full opacity
+    else:
+        alpha_vals = features_df_filtered[alpha_by].values
+        if not isinstance(alpha_vals, np.ndarray):
+            print(f"Values in column {alpha_by} are not a NumPy array (cannot be plotted)")
+            relative_alpha_vals = np.ones_like(plot_vals)  # Default to full opacity
+        else:
+            min_vals = np.min(alpha_vals)
+            max_vals = np.max(alpha_vals)
+            val_range = max_vals - min_vals
+            if val_range > 0:
+                relative_alpha_vals = (alpha_vals - min_vals) / val_range
+            else:
+                relative_alpha_vals = (alpha_vals - min_vals) + 1
+    
     if colormap == "random":
         # Special case for random (not a matplotlib colormap)
         unique_plot_vals = np.unique(plot_vals)
@@ -63,8 +89,7 @@ def color_labels_layer_by_values(
         value = np.ones(len(plot_vals))
         hsv_random = np.stack((hues, saturation, value)).T
         rgb_random = hsv2rgb(hsv_random)
-        alphas = np.ones(len(plot_vals))
-        rgba = np.hstack((rgb_random, alphas[None].T))
+        rgba = np.hstack((rgb_random, relative_alpha_vals[None].T))
     else:
         # Rescale values to [0-1] for colormapping
         min_vals = np.min(plot_vals)
@@ -76,6 +101,7 @@ def color_labels_layer_by_values(
             relative_vals = (plot_vals - min_vals) + 1
         cmap = plt.get_cmap(colormap)
         rgba = cmap(relative_vals)
+        rgba[:, 3] = relative_alpha_vals
 
     color_dict = defaultdict(lambda: np.zeros(4))
     for lab, color in zip(label_values, rgba):
