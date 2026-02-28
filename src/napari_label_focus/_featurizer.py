@@ -11,18 +11,15 @@ from numba import njit
 
 
 @njit
-def _fast_counts(mask_tyx: np.ndarray):
+def _fast_counts(mask: np.ndarray):
     """Numba-ized algorithm to find the unique values in a 3D mask."""
-    rt, ry, rx = mask_tyx.shape
-    val_set = np.arange(mask_tyx.max() + 1)
-    counts = [False] * len(val_set)
-    for t in range(rt):
-        for y in range(ry):
-            for x in range(rx):
-                val = mask_tyx[t, y, x]
-                if not counts[val]:
-                    counts[val] = True
-    return counts, val_set
+    flat_mask = mask.ravel()
+    val_set = np.arange(flat_mask.max() + 1)
+    present = np.zeros(len(val_set), dtype=np.bool_)
+    for val in flat_mask:
+        if not present[val]:
+            present[val] = True
+    return present, val_set
 
 
 def fast_uniques(mask_tyx: np.ndarray) -> np.ndarray:
