@@ -82,7 +82,11 @@ def color_labels_layer_by_values(
     if colormap == "random":
         # Special case for random (not a matplotlib colormap)
         unique_plot_vals = np.unique(plot_vals)
-        hue = np.random.random(len(unique_plot_vals))
+        n_hue = 20  # 20 different hues cycle
+        n_plot_vals = len(unique_plot_vals)
+        reps = int(np.floor(n_plot_vals / n_hue))
+        extra = n_plot_vals % n_hue
+        hue = np.concat((np.tile(np.arange(n_hue) / n_hue, reps), np.arange(extra) / n_hue))
         hue_map = {val: h for val, h in zip(unique_plot_vals, hue)}
         hues = [hue_map[h] for h in plot_vals]
         saturation = np.ones(len(plot_vals))
