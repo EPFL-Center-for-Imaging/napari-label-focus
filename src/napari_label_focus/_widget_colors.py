@@ -211,13 +211,14 @@ class FeaturesColorWidget(QWidget):
 
         self.alpha_by_cb.clear()
         self.alpha_by_cb.addItems([""])
-
+        
         df_features = sanitize_layer_features(layer)
 
         if len(df_features.columns) > 0:
             self.alpha_by_cb.addItems(df_features.columns)
 
         if col_idx is not None:
+            col_idx = col_idx + 1  # offset due to the extra "" item
             self.alpha_by_cb.setCurrentIndex(col_idx)
 
     def _update_colormap_cb(self, layer: napari.layers.Layer):
