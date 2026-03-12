@@ -103,7 +103,13 @@ class Featurizer:
             f"{col}_existing" for col in shared_cols
         ]
         df_merged = df_merged.drop(columns=cols_to_drop)
-
+        
+        # For Napari to display the correct label on hover, we need to sort rows by 'label' and add missing labels, including the background
+        lab_max = df_merged.label.max()
+        df_sth = pd.DataFrame({"label": np.arange(lab_max+1)})
+        df_merged = pd.merge(df_sth, df_merged, how="outer", on="label")
+        df_merged.sort_values(by="label", inplace=True)
+        
         return df_merged
 
 
